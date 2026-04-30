@@ -3,13 +3,13 @@ ARCH ?= arm64
 BUILD_DIR := build/$(ARCH)
 
 ifeq ($(ARCH),arm64)
-CROSS_COMPILE ?= aarch64-none-elf-
+CROSS_COMPILE ?= aarch64-linux-gnu-
 ARCH_DIR := arch/arm64
 ARCH_CFLAGS := -mgeneral-regs-only
 ARCH_LDFLAGS :=
 ARCH_OBJS := entry.o boot.o vectors.o trap.o console.o guest.o
 else ifeq ($(ARCH),riscv64)
-CROSS_COMPILE ?= riscv64-none-elf-
+CROSS_COMPILE ?= riscv64-linux-gnu-
 ARCH_DIR := arch/riscv64
 ARCH_CFLAGS := -march=rv64imach_zicsr_zifencei -mabi=lp64 -mcmodel=medany
 ARCH_LDFLAGS :=
