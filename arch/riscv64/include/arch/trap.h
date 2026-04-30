@@ -1,0 +1,6 @@
+#ifndef ARCH_RISCV64_TRAP_H
+#define ARCH_RISCV64_TRAP_H
+
+#define RISCV_CAUSE_ECALL_FROM_VS	10UL
+
+#endif
