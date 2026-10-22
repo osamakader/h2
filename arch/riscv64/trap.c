@@ -8,9 +8,14 @@ void riscv64_handle_trap(struct hv_trap_frame *frame)
 	if (frame->cause == RISCV_CAUSE_ECALL_FROM_VS)
 		reason = HV_TRAP_HYPERCALL;
 
-	if (!hv_handle_trap(reason, frame).handled)
+	if (!hv_handle_trap(reason, frame).handled) {
+		hv_dump_trap(frame->cause & RISCV_CAUSE_INTERRUPT ?
+			     "unhandled riscv64 interrupt" :
+			     "unhandled riscv64 trap", frame);
 		for (;;)
 			__asm__ volatile("wfi");
+	}
 
+	/* sepc points at the ECALL itself */
 	frame->pc += 4;
 }
