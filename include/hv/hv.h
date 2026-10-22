@@ -30,5 +30,7 @@ struct hv_trap_result hv_handle_trap(enum hv_trap_reason reason,
 				     struct hv_trap_frame *frame);
 void hv_console_putchar(char ch);
 void hv_console_write(const char *text);
+void hv_console_hex(hv_addr_t value);
+void hv_dump_trap(const char *what, const struct hv_trap_frame *frame);
 
 #endif
