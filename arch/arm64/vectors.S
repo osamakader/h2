@@ -1,74 +1,32 @@
+/* an entry h2 doesn't expect: report its index and stop */
+.macro vector_unhandled index
+	.align 7
+	mov x0, #\index
+	b arm64_unhandled_exception
+.endm
+
 .section .text.vectors, "ax"
 .align 11
 .global __arm64_vectors
 __arm64_vectors:
-	.align 7
-	b arm64_unhandled_exception
-	.space 128 - 4
+	vector_unhandled 0	/* current EL, SP_EL0: sync */
+	vector_unhandled 1	/*   IRQ */
+	vector_unhandled 2	/*   FIQ */
+	vector_unhandled 3	/*   SError */
+	vector_unhandled 4	/* current EL, SP_ELx: sync */
+	vector_unhandled 5	/*   IRQ */
+	vector_unhandled 6	/*   FIQ */
+	vector_unhandled 7	/*   SError */
 
-	.align 7
-	b arm64_unhandled_exception
-	.space 128 - 4
-
-	.align 7
-	b arm64_unhandled_exception
-	.space 128 - 4
-
-	.align 7
-	b arm64_unhandled_exception
-	.space 128 - 4
-
-	.align 7
-	b arm64_unhandled_exception
-	.space 128 - 4
-
-	.align 7
-	b arm64_unhandled_exception
-	.space 128 - 4
-
-	.align 7
-	b arm64_unhandled_exception
-	.space 128 - 4
-
-	.align 7
-	b arm64_unhandled_exception
-	.space 128 - 4
-
-	.align 7
+	.align 7		/* lower EL, AArch64: sync */
 	b arm64_sync_lower_aarch64
-	.space 128 - 4
-
-	.align 7
-	b arm64_unhandled_exception
-	.space 128 - 4
-
-	.align 7
-	b arm64_unhandled_exception
-	.space 128 - 4
-
-	.align 7
-	b arm64_unhandled_exception
-	.space 128 - 4
-
-	.align 7
-	b arm64_unhandled_exception
-	.space 128 - 4
-
-	.align 7
-	b arm64_unhandled_exception
-	.space 128 - 4
-
-	.align 7
-	b arm64_unhandled_exception
-	.space 128 - 4
-
-	.align 7
-	b arm64_unhandled_exception
-	.space 128 - 4
-
-	.align 7
-	b arm64_unhandled_exception
-	.space 128 - 4
+	vector_unhandled 9	/*   IRQ */
+	vector_unhandled 10	/*   FIQ */
+	vector_unhandled 11	/*   SError */
+	vector_unhandled 12	/* lower EL, AArch32: sync */
+	vector_unhandled 13	/*   IRQ */
+	vector_unhandled 14	/*   FIQ */
+	vector_unhandled 15	/*   SError */
 
 .text
 .global arm64_sync_lower_aarch64
@@ -131,5 +89,7 @@ arm64_sync_lower_aarch64:
 .global arm64_unhandled_exception
 .type arm64_unhandled_exception, %function
 arm64_unhandled_exception:
+	bl arm64_unhandled_vector
+1:
 	wfe
-	b arm64_unhandled_exception
+	b 1b
