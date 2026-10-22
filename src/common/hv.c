@@ -1,3 +1,4 @@
+#include <arch/trap.h>
 #include <hv/hv.h>
 
 static volatile hv_addr_t hypercall_count;
@@ -22,9 +23,9 @@ struct hv_trap_result hv_handle_trap(enum hv_trap_reason reason,
 	hypercall_count++;
 	result.handled = 1;
 
-	switch (frame->regs[0]) {
+	switch (frame->regs[HV_TRAP_ARG(0)]) {
 	case HV_HCALL_PUTC:
-		hv_console_putchar((char)frame->regs[1]);
+		hv_console_putchar((char)frame->regs[HV_TRAP_ARG(1)]);
 		result.return_value = 0;
 		break;
 	default:
@@ -32,7 +33,7 @@ struct hv_trap_result hv_handle_trap(enum hv_trap_reason reason,
 		break;
 	}
 
-	frame->regs[0] = result.return_value;
+	frame->regs[HV_TRAP_ARG(0)] = result.return_value;
 
 	return result;
 }

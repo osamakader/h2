@@ -17,7 +17,7 @@ static inline void enter_vs_guest(unsigned long entry, unsigned long stack)
 		"csrw stvec, %[trap]\n"
 		"csrw hgatp, zero\n"
 		"csrw vsatp, zero\n"
-		"csrw vsepc, %[entry]\n"
+		"csrw sepc, %[entry]\n"
 		"csrw sscratch, %[host_stack]\n"
 		"csrr t0, hstatus\n"
 		"ori t0, t0, %[spv]\n"
