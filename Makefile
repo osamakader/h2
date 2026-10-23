@@ -13,7 +13,7 @@ CROSS_COMPILE ?= riscv64-linux-gnu-
 ARCH_DIR := arch/riscv64
 ARCH_CFLAGS := -march=rv64imach_zicsr_zifencei -mabi=lp64 -mcmodel=medany
 ARCH_LDFLAGS :=
-ARCH_OBJS := entry.o boot.o trap_entry.o trap.o console.o guest.o
+ARCH_OBJS := entry.o boot.o trap_entry.o trap.o sbi.o console.o guest.o
 else
 $(error Unsupported ARCH=$(ARCH). Use arm64 or riscv64)
 endif
