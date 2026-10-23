@@ -1,41 +1,27 @@
-#include <arch/trap.h>
 #include <hv/hv.h>
-
-static volatile hv_addr_t hypercall_count;
 
 void hv_main(void)
 {
-	hypercall_count = 0;
 	hv_console_write("h2: hypervisor online\n");
 }
 
-struct hv_trap_result hv_handle_trap(enum hv_trap_reason reason,
-				     struct hv_trap_frame *frame)
+struct hv_hcall_ret hv_hypercall(hv_addr_t nr, hv_addr_t arg0)
 {
-	struct hv_trap_result result = {
-		.handled = 0,
-		.return_value = 0,
+	struct hv_hcall_ret ret = {
+		.error = HV_OK,
+		.value = 0,
 	};
 
-	if (reason != HV_TRAP_HYPERCALL)
-		return result;
-
-	hypercall_count++;
-	result.handled = 1;
-
-	switch (frame->regs[HV_TRAP_ARG(0)]) {
+	switch (nr) {
 	case HV_HCALL_PUTC:
-		hv_console_putchar((char)frame->regs[HV_TRAP_ARG(1)]);
-		result.return_value = 0;
+		hv_console_putchar((char)arg0);
 		break;
 	default:
-		result.return_value = hypercall_count;
+		ret.error = HV_ENOSYS;
 		break;
 	}
 
-	frame->regs[HV_TRAP_ARG(0)] = result.return_value;
-
-	return result;
+	return ret;
 }
 
 void hv_console_write(const char *text)

@@ -3,13 +3,23 @@
 
 #include <hv/types.h>
 
-enum hv_trap_reason {
-	HV_TRAP_UNKNOWN = 0,
-	HV_TRAP_HYPERCALL,
-};
-
+/*
+ * h2's own calls. The guest reaches them through the arch conduit:
+ * SMCCC vendor-specific hypervisor calls on arm64, an SBI extension on
+ * riscv64; the number is the call's function number there.
+ */
 enum hv_hypercall {
 	HV_HCALL_PUTC = 1,
+};
+
+enum hv_error {
+	HV_OK = 0,
+	HV_ENOSYS = -1,
+};
+
+struct hv_hcall_ret {
+	enum hv_error error;
+	hv_addr_t value;
 };
 
 struct hv_trap_frame {
@@ -20,14 +30,8 @@ struct hv_trap_frame {
 	hv_addr_t value;
 };
 
-struct hv_trap_result {
-	int handled;
-	hv_addr_t return_value;
-};
-
 void hv_main(void);
-struct hv_trap_result hv_handle_trap(enum hv_trap_reason reason,
-				     struct hv_trap_frame *frame);
+struct hv_hcall_ret hv_hypercall(hv_addr_t nr, hv_addr_t arg0);
 void hv_console_putchar(char ch);
 void hv_console_write(const char *text);
 void hv_console_hex(hv_addr_t value);

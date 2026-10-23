@@ -1,8 +1,9 @@
+#include <arch/trap.h>
 #include <hv/hv.h>
 
 static void guest_putc(char ch)
 {
-	register unsigned long x0 __asm__("x0") = HV_HCALL_PUTC;
+	register unsigned long x0 __asm__("x0") = HV_SMCCC_FID(HV_HCALL_PUTC);
 	register unsigned long x1 __asm__("x1") = (unsigned long)ch;
 
 	__asm__ volatile("hvc #0" : "+r"(x0) : "r"(x1) : "memory");
