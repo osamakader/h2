@@ -1,10 +1,12 @@
+#include <arch/boot.h>
 #include <arch/sbi.h>
 #include <arch/trap.h>
 #include <hv/hv.h>
 
 /*
  * SBI for the guest: h2's own extension, and everything else forwarded
- * to the firmware (OpenSBI) with the guest's a0..a7.
+ * to the firmware (OpenSBI) with the guest's a0..a7. HSM hart_start
+ * starts the hart in h2, which then enters the guest.
  */
 
 #define A(n)	HV_TRAP_ARG(n)
@@ -14,6 +16,16 @@
 #define SBI_EXT_SUSP		0x53555350UL	/* "SUSP" */
 #define SBI_HSM_HART_START	0
 #define SBI_HSM_HART_SUSPEND	3
+
+#define SBI_ERR_INVALID_PARAM	(-3L)
+
+extern char riscv64_secondary_entry[];
+
+/* where each hart enters the guest, from the guest's hart_start */
+static struct {
+	hv_addr_t entry;
+	hv_addr_t opaque;
+} guest_boot[HV_MAX_CPUS];
 
 struct sbiret {
 	hv_addr_t error;
@@ -38,11 +50,36 @@ static struct sbiret firmware_ecall(const hv_addr_t *a)
 	return (struct sbiret){ a0, a1 };
 }
 
+static struct sbiret hart_start(const hv_addr_t *a)
+{
+	hv_addr_t fw[8] = { 0 };
+	hv_addr_t hartid = a[0];
+
+	if (hartid >= HV_MAX_CPUS)
+		return (struct sbiret){ (hv_addr_t)SBI_ERR_INVALID_PARAM, 0 };
+
+	guest_boot[hartid].entry = a[1];
+	guest_boot[hartid].opaque = a[2];
+
+	fw[0] = hartid;
+	fw[1] = (hv_addr_t)riscv64_secondary_entry;
+	fw[6] = SBI_HSM_HART_START;
+	fw[7] = SBI_EXT_HSM;
+	return firmware_ecall(fw);
+}
+
+void riscv64_secondary_boot(unsigned long hartid)
+{
+	riscv64_enter_guest(guest_boot[hartid].entry, 0,
+			    (unsigned long)(hv_cpu_stacks[hartid] + HV_STACK_SIZE),
+			    hartid, guest_boot[hartid].opaque);
+}
+
 /* calls whose entry point h2 would have to wrap: not yet */
 static int sbi_unsupported(hv_addr_t ext, hv_addr_t fid)
 {
 	if (ext == SBI_EXT_HSM)
-		return fid == SBI_HSM_HART_START || fid == SBI_HSM_HART_SUSPEND;
+		return fid == SBI_HSM_HART_SUSPEND;
 	return ext == SBI_EXT_SUSP;
 }
 
@@ -65,7 +102,10 @@ void riscv64_sbi_call(struct hv_trap_frame *frame)
 		return;
 	}
 
-	fw = firmware_ecall(a);
+	if (ext == SBI_EXT_HSM && fid == SBI_HSM_HART_START)
+		fw = hart_start(a);
+	else
+		fw = firmware_ecall(a);
 	a[0] = fw.error;
 	if (ext > SBI_EXT_LEGACY_LAST)
 		a[1] = fw.value;
