@@ -7,7 +7,7 @@ CROSS_COMPILE ?= aarch64-linux-gnu-
 ARCH_DIR := arch/arm64
 ARCH_CFLAGS := -mgeneral-regs-only
 ARCH_LDFLAGS :=
-ARCH_OBJS := entry.o boot.o vectors.o trap.o console.o guest.o
+ARCH_OBJS := entry.o boot.o vectors.o trap.o psci.o console.o guest.o
 else ifeq ($(ARCH),riscv64)
 CROSS_COMPILE ?= riscv64-linux-gnu-
 ARCH_DIR := arch/riscv64

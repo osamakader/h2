@@ -6,6 +6,7 @@ extern char __guest_stack_top[];
 extern void arm64_guest_entry(void);
 
 #define HCR_EL2_RW		(1UL << 31)
+#define HCR_EL2_TSC		(1UL << 19)	/* guest SMCs trap to h2 */
 #define CNTHCTL_EL1PCTEN	(1UL << 0)
 #define CNTHCTL_EL1PCEN		(1UL << 1)
 #define CPTR_EL2_RES1		0x32ffUL	/* RES1 bits; TFP, TTA, TCPAC clear */
@@ -29,7 +30,7 @@ void arm64_el2_init(void)
 	unsigned long pfr0, value;
 
 	__asm__ volatile("msr VBAR_EL2, %0" :: "r"(__arm64_vectors));
-	__asm__ volatile("msr HCR_EL2, %0" :: "r"(HCR_EL2_RW));
+	__asm__ volatile("msr HCR_EL2, %0" :: "r"(HCR_EL2_RW | HCR_EL2_TSC));
 
 	__asm__ volatile("mrs %0, CNTHCTL_EL2" : "=r"(value));
 	value |= CNTHCTL_EL1PCTEN | CNTHCTL_EL1PCEN;

@@ -1,3 +1,4 @@
+#include <arch/psci.h>
 #include <arch/trap.h>
 #include <hv/hv.h>
 
@@ -12,6 +13,10 @@ static void smccc_call(struct hv_trap_frame *frame)
 		frame->regs[0] = ret.error ? (hv_addr_t)SMCCC_RET_NOT_SUPPORTED : 0;
 		frame->regs[1] = ret.value;
 		break;
+	case SMCCC_OWNER_STANDARD:
+		if (arm64_psci_call(frame))
+			break;
+		/* fall through */
 	default:
 		frame->regs[0] = (hv_addr_t)SMCCC_RET_NOT_SUPPORTED;
 		break;
@@ -24,6 +29,11 @@ void arm64_handle_trap(struct hv_trap_frame *frame)
 	case ARM64_ESR_EC_HVC64:
 		/* ELR_EL2 already points past the HVC */
 		smccc_call(frame);
+		break;
+	case ARM64_ESR_EC_SMC64:
+		/* trapped by HCR_EL2.TSC: ELR_EL2 points at the SMC itself */
+		smccc_call(frame);
+		frame->pc += 4;
 		break;
 	default:
 		hv_dump_trap("unhandled arm64 trap", frame);
