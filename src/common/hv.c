@@ -1,5 +1,7 @@
 #include <hv/hv.h>
 
+char hv_cpu_stacks[HV_MAX_CPUS][HV_STACK_SIZE] __attribute__((aligned(16)));
+
 void hv_main(void)
 {
 	hv_console_write("h2: hypervisor online\n");

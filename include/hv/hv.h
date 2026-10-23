@@ -1,6 +1,7 @@
 #ifndef HV_H
 #define HV_H
 
+#include <hv/config.h>
 #include <hv/types.h>
 
 /*
@@ -29,6 +30,9 @@ struct hv_trap_frame {
 	hv_addr_t cause;
 	hv_addr_t value;
 };
+
+/* h2's stack on CPU i, for the CPUs it starts for the guest */
+extern char hv_cpu_stacks[HV_MAX_CPUS][HV_STACK_SIZE];
 
 void hv_main(void);
 struct hv_hcall_ret hv_hypercall(hv_addr_t nr, hv_addr_t arg0);
