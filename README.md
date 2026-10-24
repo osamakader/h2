@@ -17,32 +17,42 @@ make ARCH=riscv64 CROSS_COMPILE=riscv64-none-elf-
 
 ## Run on QEMU virt
 
-Arm boots this image directly at EL2 on `virt`:
-
 ```sh
-qemu-system-aarch64 \
-  -machine virt,virtualization=on -cpu cortex-a57 -nographic \
-  -kernel build/arm64/h2.elf
+make ARCH=arm64 run          # h2 and its built-in test guest
+make ARCH=riscv64 run
 ```
 
-Expected output:
+Expected output (arm64; riscv64 says "VS via ECALL"):
 
 ```text
 h2: hypervisor online
+h2: device tree at 0x0000000040000000, h2 reserved 0x0000000040100000-...
 guest: hello from EL1 via HVC
 ```
 
-RISC-V requires a hypervisor-capable CPU model. This skeleton expects to be started in supervisor/HS context by firmware or a test harness; `-bios none` platform boot policy varies by QEMU version and machine configuration.
+`CPUS` (default 3), `MEM` (128M) and `QEMU_ARGS` adjust the machine. On
+arm64 qemu starts h2 in EL2 (`virtualization=on`); on riscv64 OpenSBI
+starts it in HS-mode (`-cpu rv64,h=true`).
+
+## Guests
+
+`make GUEST=path/to/kernel.elf` embeds an ELF kernel in h2 instead of the
+built-in guest. h2 loads its segments at their physical addresses and
+enters it in EL1 / VS-mode with the MMU off, as firmware would: on arm64
+with the DTB in x0, on riscv64 with the hartid in a0 and the DTB in a1.
+h2 reserves its own memory in the DTB (`/memreserve/`), forwards PSCI /
+SBI calls to the firmware, and starts the CPUs the guest starts. Devices
+are passed through.
+
+h2 links at 0x40100000 on arm64 and 0x84000000 on riscv64; the guest must
+fit around it.
+
+[o2](https://github.com/osamakader/o2) boots this way. With o2 built
+next to h2 (`make -C ../o2 ARCH=arm64`):
 
 ```sh
-qemu-system-riscv64 \
-  -machine virt -cpu rv64,h=true -nographic \
-  -kernel build/riscv64/h2.elf
+make ARCH=arm64 run-o2       # O2=path/to/o2 if it is elsewhere
 ```
 
-Expected output, when the image is entered in HS-mode with the H extension available:
-
-```text
-h2: hypervisor online
-guest: hello from VS via ECALL
-```
+riscv64 doesn't get as far yet: h2 doesn't pass interrupts on to the
+guest.
