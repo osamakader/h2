@@ -8,7 +8,11 @@ PHDRS
 
 SECTIONS
 {
-	. = 0x80200000;
+	/*
+	 * Not 0x80200000, where OpenSBI starts S-mode kernels: that is the
+	 * guest's. OpenSBI jumps to our ELF entry, wherever it is.
+	 */
+	. = 0x84000000;
 	__image_start = .;
 
 	.text : ALIGN(4096) {
