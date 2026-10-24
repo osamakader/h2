@@ -24,7 +24,7 @@ OBJCOPY := $(CROSS_COMPILE)objcopy
 
 COMMON_CFLAGS := \
 	-std=c11 -ffreestanding -fno-builtin -fno-stack-protector \
-	-fno-pic -fno-pie -Wall -Wextra -Werror -O2 \
+	-fno-pic -fno-pie -Wall -Wextra -Werror -O2 -MMD -MP \
 	-Iinclude -I$(ARCH_DIR)/include
 
 COMMON_OBJS := hv.o fdt.o
@@ -54,3 +54,5 @@ $(BUILD_DIR)/arch/%.o: $(ARCH_DIR)/%.S
 
 clean:
 	rm -rf build
+
+-include $(OBJS:.o=.d)
