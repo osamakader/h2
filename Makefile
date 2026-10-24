@@ -27,7 +27,7 @@ COMMON_CFLAGS := \
 	-fno-pic -fno-pie -Wall -Wextra -Werror -O2 \
 	-Iinclude -I$(ARCH_DIR)/include
 
-COMMON_OBJS := hv.o
+COMMON_OBJS := hv.o fdt.o
 OBJS := $(addprefix $(BUILD_DIR)/common/,$(COMMON_OBJS)) \
 	$(addprefix $(BUILD_DIR)/arch/,$(ARCH_OBJS))
 
