@@ -1,10 +1,42 @@
+#include <hv/fdt.h>
 #include <hv/hv.h>
 
 char hv_cpu_stacks[HV_MAX_CPUS][HV_STACK_SIZE] __attribute__((aligned(16)));
 
-void hv_main(void)
+#define HV_PAGE_SIZE	0x1000UL
+
+extern char __image_start[], __image_end[];
+
+/*
+ * Bring h2 up. dtb is the firmware's device tree, or 0; returns the one
+ * for the guest: the same, with h2's image reserved, or 0 if none.
+ */
+hv_addr_t hv_main(hv_addr_t dtb)
 {
+	hv_addr_t start = (hv_addr_t)__image_start;
+	hv_addr_t end = ((hv_addr_t)__image_end + HV_PAGE_SIZE - 1) &
+			~(HV_PAGE_SIZE - 1);
+
 	hv_console_write("h2: hypervisor online\n");
+
+	if (!fdt_valid((void *)dtb)) {
+		hv_console_write("h2: no device tree\n");
+		return 0;
+	}
+
+	hv_console_write("h2: device tree at ");
+	hv_console_hex(dtb);
+	if (fdt_add_memreserve((void *)dtb, start, end - start) < 0) {
+		hv_console_write(", no room in it to reserve h2\n");
+	} else {
+		hv_console_write(", h2 reserved ");
+		hv_console_hex(start);
+		hv_console_putchar('-');
+		hv_console_hex(end);
+		hv_console_putchar('\n');
+	}
+
+	return dtb;
 }
 
 struct hv_hcall_ret hv_hypercall(hv_addr_t nr, hv_addr_t arg0)

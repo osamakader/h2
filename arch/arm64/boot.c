@@ -13,6 +13,9 @@ extern void arm64_guest_entry(void);
 #define ICC_SRE_EL2_VALUE	0xfUL		/* SRE, DFB, DIB, Enable */
 #define ID_AA64PFR0_GIC(v)	(((v) >> 24) & 0xf)
 
+/* qemu virt: ELF kernels get no x0, but the DTB at the start of RAM */
+#define QEMU_VIRT_RAM_BASE	0x40000000UL
+
 static inline unsigned long read_current_el(void)
 {
 	unsigned long value;
@@ -84,14 +87,16 @@ void arm64_enter_guest(unsigned long entry, unsigned long stack,
 	__builtin_unreachable();
 }
 
-void arm64_boot(void)
+void arm64_boot(unsigned long dtb)
 {
 	if (read_current_el() != 2)
 		for (;;)
 			__asm__ volatile("wfe");
 
-	hv_main();
+	if (!dtb)
+		dtb = QEMU_VIRT_RAM_BASE;
+	dtb = hv_main(dtb);
 	arm64_el2_init();
 	arm64_enter_guest((unsigned long)arm64_guest_entry,
-			  (unsigned long)__guest_stack_top, 0);
+			  (unsigned long)__guest_stack_top, dtb);
 }

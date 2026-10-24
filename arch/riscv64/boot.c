@@ -49,10 +49,10 @@ void riscv64_enter_guest(unsigned long entry, unsigned long stack,
 	__builtin_unreachable();
 }
 
-void riscv64_boot(void)
+void riscv64_boot(unsigned long hartid, unsigned long dtb)
 {
-	hv_main();
+	dtb = hv_main(dtb);
 	riscv64_enter_guest((unsigned long)riscv64_guest_entry,
 			    (unsigned long)__guest_stack_top,
-			    (unsigned long)__stack_top, 0, 0);
+			    (unsigned long)__stack_top, hartid, dtb);
 }

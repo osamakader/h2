@@ -34,7 +34,7 @@ struct hv_trap_frame {
 /* h2's stack on CPU i, for the CPUs it starts for the guest */
 extern char hv_cpu_stacks[HV_MAX_CPUS][HV_STACK_SIZE];
 
-void hv_main(void);
+hv_addr_t hv_main(hv_addr_t dtb);
 struct hv_hcall_ret hv_hypercall(hv_addr_t nr, hv_addr_t arg0);
 void hv_console_putchar(char ch);
 void hv_console_write(const char *text);

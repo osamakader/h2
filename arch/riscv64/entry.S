@@ -3,6 +3,7 @@
 .section .text.boot, "ax"
 .global _start
 _start:
+	/* a0: hartid, a1: the DTB, from the firmware */
 	la sp, __stack_top
 	call riscv64_boot
 

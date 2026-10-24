@@ -4,8 +4,9 @@
 .global _start
 .type _start, %function
 _start:
-	ldr x0, =__stack_top
-	mov sp, x0
+	/* x0: the DTB, from a boot loader that starts us like Linux */
+	ldr x1, =__stack_top
+	mov sp, x1
 	bl arm64_boot
 
 1:
