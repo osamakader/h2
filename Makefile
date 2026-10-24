@@ -27,11 +27,15 @@ COMMON_CFLAGS := \
 	-fno-pic -fno-pie -Wall -Wextra -Werror -O2 -MMD -MP \
 	-Iinclude -I$(ARCH_DIR)/include
 
-COMMON_OBJS := hv.o fdt.o
+COMMON_OBJS := hv.o fdt.o elf.o guest_image.o
+
+# the guest: an ELF file to embed and load (default: the built-in guest)
+GUEST ?=
+GUEST_FILE := $(if $(GUEST),$(abspath $(GUEST)))
 OBJS := $(addprefix $(BUILD_DIR)/common/,$(COMMON_OBJS)) \
 	$(addprefix $(BUILD_DIR)/arch/,$(ARCH_OBJS))
 
-.PHONY: all clean
+.PHONY: all clean FORCE
 all: $(BUILD_DIR)/h2.elf $(BUILD_DIR)/h2.bin
 
 $(BUILD_DIR)/h2.elf: $(OBJS) $(ARCH_DIR)/linker.ld
@@ -43,6 +47,23 @@ $(BUILD_DIR)/h2.bin: $(BUILD_DIR)/h2.elf
 $(BUILD_DIR)/common/%.o: src/common/%.c
 	mkdir -p $(dir $@)
 	$(CC) $(COMMON_CFLAGS) $(ARCH_CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/common/%.o: src/common/%.S
+	mkdir -p $(dir $@)
+	$(CC) $(COMMON_CFLAGS) $(ARCH_CFLAGS) $(EXTRA_CFLAGS) -c $< -o $@
+
+# the guest, stripped: only its segments matter. Rebuilt when the
+# guest file, or which file it is, changes.
+$(BUILD_DIR)/common/guest_image.o: $(if $(GUEST_FILE),$(BUILD_DIR)/guest.elf) $(BUILD_DIR)/guest
+$(BUILD_DIR)/common/guest_image.o: EXTRA_CFLAGS := \
+	$(if $(GUEST_FILE),-DHV_GUEST_IMAGE='"$(abspath $(BUILD_DIR))/guest.elf"')
+
+$(BUILD_DIR)/guest.elf: $(GUEST_FILE) $(BUILD_DIR)/guest
+	$(OBJCOPY) --strip-all $(GUEST_FILE) $@
+
+$(BUILD_DIR)/guest: FORCE
+	@mkdir -p $(dir $@)
+	@echo '$(GUEST_FILE)' | cmp -s - $@ || echo '$(GUEST_FILE)' > $@
 
 $(BUILD_DIR)/arch/%.o: $(ARCH_DIR)/%.c
 	mkdir -p $(dir $@)

@@ -51,8 +51,21 @@ void riscv64_enter_guest(unsigned long entry, unsigned long stack,
 
 void riscv64_boot(unsigned long hartid, unsigned long dtb)
 {
+	hv_addr_t entry;
+
 	dtb = hv_main(dtb);
-	riscv64_enter_guest((unsigned long)riscv64_guest_entry,
-			    (unsigned long)__guest_stack_top,
-			    (unsigned long)__stack_top, hartid, dtb);
+
+	switch (hv_load_guest(dtb, &entry)) {
+	case 1:
+		__asm__ volatile("fence.i" ::: "memory");
+		riscv64_enter_guest(entry, 0, (unsigned long)__stack_top,
+				    hartid, dtb);
+	case 0:
+		riscv64_enter_guest((unsigned long)riscv64_guest_entry,
+				    (unsigned long)__guest_stack_top,
+				    (unsigned long)__stack_top, hartid, dtb);
+	default:
+		for (;;)
+			__asm__ volatile("wfi");
+	}
 }

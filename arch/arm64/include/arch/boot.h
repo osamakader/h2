@@ -2,6 +2,7 @@
 #define ARCH_ARM64_BOOT_H
 
 void arm64_el2_init(void);
+__attribute__((noreturn))
 void arm64_enter_guest(unsigned long entry, unsigned long stack,
 		       unsigned long arg);
 

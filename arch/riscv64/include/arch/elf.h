@@ -1,0 +1,6 @@
+#ifndef ARCH_RISCV64_ELF_H
+#define ARCH_RISCV64_ELF_H
+
+#define ARCH_ELF_MACHINE	243	/* EM_RISCV */
+
+#endif

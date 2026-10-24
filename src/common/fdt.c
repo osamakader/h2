@@ -55,6 +55,11 @@ int fdt_valid(const void *fdt)
 	       get32(fdt, FDT_VERSION) >= FDT_VERSION_MIN;
 }
 
+uint32_t fdt_size(const void *fdt)
+{
+	return get32(fdt, FDT_TOTALSIZE);
+}
+
 /*
  * Add a /memreserve/ entry. The entries come right before the structure
  * block, so everything from the terminating entry to the end of the
