@@ -9,10 +9,12 @@ extern void riscv64_guest_entry(void);
 #define HSTATUS_SPV	(1UL << 7)
 #define HSTATUS_SPVP	(1UL << 8)
 #define SSTATUS_SPP	(1UL << 8)
+#define HCOUNTEREN_CY_TM_IR	0x7UL	/* cycle, time, instret */
 
 /*
- * Enter VS-mode at entry with a0, a1 = arg0, arg1; while the guest runs,
- * sscratch holds h2's stack on this hart, for the trap vector.
+ * Enter VS-mode at entry with a0, a1 = arg0, arg1; the guest may read the
+ * cycle, time and instret counters. While the guest runs, sscratch holds
+ * h2's stack on this hart, for the trap vector.
  */
 void riscv64_enter_guest(unsigned long entry, unsigned long stack,
 			 unsigned long host_stack, unsigned long arg0,
@@ -25,6 +27,7 @@ void riscv64_enter_guest(unsigned long entry, unsigned long stack,
 		"csrw stvec, %[trap]\n"
 		"csrw hgatp, zero\n"
 		"csrw vsatp, zero\n"
+		"csrw hcounteren, %[counters]\n"
 		"csrw sepc, %[entry]\n"
 		"csrw sscratch, %[host_stack]\n"
 		"csrr t0, hstatus\n"
@@ -44,6 +47,7 @@ void riscv64_enter_guest(unsigned long entry, unsigned long stack,
 		  [spv] "i"(HSTATUS_SPV),
 		  [spvp] "i"(HSTATUS_SPVP),
 		  [spp] "i"(SSTATUS_SPP),
+		  [counters] "r"(HCOUNTEREN_CY_TM_IR),
 		  "r"(a0), "r"(a1)
 		: "t0", "memory");
 	__builtin_unreachable();
