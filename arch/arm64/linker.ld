@@ -8,7 +8,12 @@ PHDRS
 
 SECTIONS
 {
-	. = 0x40080000;
+	/*
+	 * qemu puts the DTB (1MB) at the start of RAM, 0x40000000, only if
+	 * it fits below the lowest ELF segment
+	 */
+	. = 0x40100000;
+	__image_start = .;
 
 	.text : ALIGN(4096) {
 		*(.text.boot)
@@ -40,4 +45,6 @@ SECTIONS
 		. += 0x4000;
 		__guest_stack_top = .;
 	} :data
+
+	__image_end = .;
 }

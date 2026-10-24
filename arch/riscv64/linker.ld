@@ -9,6 +9,7 @@ PHDRS
 SECTIONS
 {
 	. = 0x80200000;
+	__image_start = .;
 
 	.text : ALIGN(4096) {
 		*(.text.boot)
@@ -40,4 +41,6 @@ SECTIONS
 		. += 0x4000;
 		__guest_stack_top = .;
 	} :data
+
+	__image_end = .;
 }
