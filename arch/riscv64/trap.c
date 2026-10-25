@@ -2,6 +2,7 @@
 #include <arch/sbi.h>
 #include <arch/trap.h>
 #include <arch/virq.h>
+#include <arch/vplic.h>
 #include <hv/hv.h>
 
 void riscv64_handle_trap(struct hv_trap_frame *frame)
@@ -18,6 +19,14 @@ void riscv64_handle_trap(struct hv_trap_frame *frame)
 	case RISCV_CAUSE_INTERRUPT | IRQ_S_TIMER:
 		riscv64_timer_interrupt();
 		break;
+	case RISCV_CAUSE_INTERRUPT | IRQ_S_EXT:
+		riscv64_external_sync();
+		break;
+	case RISCV_CAUSE_LOAD_GUEST_PAGE_FAULT:
+	case RISCV_CAUSE_STORE_GUEST_PAGE_FAULT:
+		if (riscv64_vplic_access(frame))
+			break;
+		/* fall through */
 	default:
 		hv_dump_trap(frame->cause & RISCV_CAUSE_INTERRUPT ?
 			     "unhandled riscv64 interrupt" :

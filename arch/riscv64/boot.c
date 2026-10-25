@@ -1,6 +1,7 @@
 #include <arch/boot.h>
 #include <arch/stage2.h>
 #include <arch/virq.h>
+#include <arch/vplic.h>
 #include <hv/hv.h>
 
 extern char __riscv64_trap_vector[];
@@ -77,6 +78,7 @@ void riscv64_boot(unsigned long hartid, unsigned long dtb)
 	if (loaded == 1)
 		riscv64_stage2_hole((hv_addr_t)__image_start,
 				    ((hv_addr_t)__image_end + 0xfff) & ~0xfffUL);
+	riscv64_vplic_init();
 	if (loaded >= 0 && riscv64_stage2_init() < 0)
 		loaded = -1;
 

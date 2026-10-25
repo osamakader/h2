@@ -1,6 +1,7 @@
 #include <arch/csr.h>
 #include <arch/sbi.h>
 #include <arch/virq.h>
+#include <arch/vplic.h>
 
 /*
  * Interrupts for the guest. The VS-level ones are delegated to it
@@ -18,6 +19,7 @@ void riscv64_virq_init(void)
 	csr_write(hvip, 0);
 	csr_write(hideleg, VS_IRQS);
 	csr_set(sie, (1UL << IRQ_S_TIMER) | (1UL << IRQ_S_SOFT));
+	riscv64_external_sync();
 }
 
 /*
