@@ -1,4 +1,5 @@
 #include <arch/boot.h>
+#include <arch/virq.h>
 #include <hv/hv.h>
 
 extern char __riscv64_trap_vector[];
@@ -13,13 +14,16 @@ extern void riscv64_guest_entry(void);
 
 /*
  * Enter VS-mode at entry with a0, a1 = arg0, arg1; the guest may read the
- * cycle, time and instret counters. While the guest runs, sscratch holds
+ * cycle, time and instret counters and gets its interrupts. While the guest runs, sscratch holds
  * h2's stack on this hart, for the trap vector.
  */
 void riscv64_enter_guest(unsigned long entry, unsigned long stack,
 			 unsigned long host_stack, unsigned long arg0,
 			 unsigned long arg1)
 {
+	riscv64_virq_init();
+
+	/* bound to a0/a1 only after the call, which may clobber them */
 	register unsigned long a0 __asm__("a0") = arg0;
 	register unsigned long a1 __asm__("a1") = arg1;
 

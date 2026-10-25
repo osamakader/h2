@@ -4,5 +4,6 @@
 #include <hv/hv.h>
 
 void riscv64_sbi_call(struct hv_trap_frame *frame);
+void riscv64_sbi_set_timer(hv_addr_t stime);
 
 #endif

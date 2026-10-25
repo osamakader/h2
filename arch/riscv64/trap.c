@@ -1,5 +1,7 @@
+#include <arch/csr.h>
 #include <arch/sbi.h>
 #include <arch/trap.h>
+#include <arch/virq.h>
 #include <hv/hv.h>
 
 void riscv64_handle_trap(struct hv_trap_frame *frame)
@@ -9,6 +11,9 @@ void riscv64_handle_trap(struct hv_trap_frame *frame)
 		riscv64_sbi_call(frame);
 		/* sepc points at the ECALL itself */
 		frame->pc += 4;
+		break;
+	case RISCV_CAUSE_INTERRUPT | IRQ_S_TIMER:
+		riscv64_timer_interrupt();
 		break;
 	default:
 		hv_dump_trap(frame->cause & RISCV_CAUSE_INTERRUPT ?

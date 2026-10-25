@@ -1,5 +1,6 @@
 #include <arch/boot.h>
 #include <arch/sbi.h>
+#include <arch/virq.h>
 #include <arch/trap.h>
 #include <hv/hv.h>
 
@@ -11,7 +12,10 @@
 
 #define A(n)	HV_TRAP_ARG(n)
 
+#define SBI_EXT_LEGACY_SET_TIMER 0x00UL
 #define SBI_EXT_LEGACY_LAST	0x0fUL		/* legacy: result in a0 only */
+#define SBI_EXT_TIME		0x54494d45UL	/* "TIME" */
+#define SBI_TIME_SET_TIMER	0
 #define SBI_EXT_HSM		0x48534dUL	/* "HSM" */
 #define SBI_EXT_SUSP		0x53555350UL	/* "SUSP" */
 #define SBI_HSM_HART_START	0
@@ -68,6 +72,17 @@ static struct sbiret hart_start(const hv_addr_t *a)
 	return firmware_ecall(fw);
 }
 
+/* h2's own timer requests, for this hart */
+void riscv64_sbi_set_timer(hv_addr_t stime)
+{
+	hv_addr_t fw[8] = { 0 };
+
+	fw[0] = stime;
+	fw[6] = SBI_TIME_SET_TIMER;
+	fw[7] = SBI_EXT_TIME;
+	firmware_ecall(fw);
+}
+
 void riscv64_secondary_boot(unsigned long hartid)
 {
 	riscv64_enter_guest(guest_boot[hartid].entry, 0,
@@ -101,6 +116,10 @@ void riscv64_sbi_call(struct hv_trap_frame *frame)
 		a[0] = (hv_addr_t)SBI_ERR_NOT_SUPPORTED;
 		return;
 	}
+
+	if ((ext == SBI_EXT_TIME && fid == SBI_TIME_SET_TIMER) ||
+	    ext == SBI_EXT_LEGACY_SET_TIMER)
+		riscv64_guest_set_timer();
 
 	if (ext == SBI_EXT_HSM && fid == SBI_HSM_HART_START)
 		fw = hart_start(a);
