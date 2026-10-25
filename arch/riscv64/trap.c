@@ -34,3 +34,17 @@ void riscv64_handle_trap(struct hv_trap_frame *frame)
 			__asm__ volatile("wfi");
 	}
 }
+
+/* A trap in h2 itself, from the trap vector: report it and stop. */
+void riscv64_host_fault(void)
+{
+	struct hv_trap_frame frame;
+
+	frame.cause = csr_read(scause);
+	frame.pc = csr_read(sepc);
+	frame.value = csr_read(stval);
+	frame.status = csr_read(sstatus);
+	hv_dump_trap("fault in h2", &frame);
+	for (;;)
+		__asm__ volatile("wfi");
+}

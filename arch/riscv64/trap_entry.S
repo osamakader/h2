@@ -1,7 +1,7 @@
 /*
  * Trap frame: regs[i] holds x(i+1), then pc (sepc), status (sstatus),
  * cause (scause) and value (stval), as in struct hv_trap_frame.
- * sscratch holds the host stack while the guest runs.
+ * sscratch holds the host stack while the guest runs, and 0 while h2 does.
  */
 #define REG(n)		(((n) - 1) * 8)
 #define FRAME_PC	248
@@ -15,6 +15,12 @@
 .global __riscv64_trap_vector
 __riscv64_trap_vector:
 	csrrw sp, sscratch, sp
+	bnez sp, 1f
+	/* from h2 itself: put sp back, sscratch stays 0 */
+	csrrw sp, sscratch, sp
+	j riscv64_host_fault
+
+1:
 	addi sp, sp, -FRAME_SIZE
 	sd x1, REG(1)(sp)
 	sd x3, REG(3)(sp)
@@ -47,9 +53,10 @@ __riscv64_trap_vector:
 	sd x30, REG(30)(sp)
 	sd x31, REG(31)(sp)
 
-	/* the guest's sp was swapped into sscratch */
+	/* the guest's sp was swapped into sscratch; h2 runs now */
 	csrr t0, sscratch
 	sd t0, REG(2)(sp)
+	csrw sscratch, zero
 
 	csrr t0, sepc
 	csrr t1, sstatus

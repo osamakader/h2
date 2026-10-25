@@ -5,6 +5,9 @@
 _start:
 	/* a0: hartid, a1: the DTB, from the firmware */
 	la sp, __stack_top
+	csrw sscratch, zero
+	la t0, __riscv64_trap_vector
+	csrw stvec, t0
 	call riscv64_boot
 
 1:
@@ -23,6 +26,9 @@ riscv64_secondary_entry:
 	li t1, HV_STACK_SIZE
 	mul t0, t0, t1
 	add sp, sp, t0
+	csrw sscratch, zero
+	la t0, __riscv64_trap_vector
+	csrw stvec, t0
 	call riscv64_secondary_boot
 
 1:
