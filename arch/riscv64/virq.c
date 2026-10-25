@@ -17,7 +17,7 @@ void riscv64_virq_init(void)
 	riscv64_sbi_set_timer(~0UL);
 	csr_write(hvip, 0);
 	csr_write(hideleg, VS_IRQS);
-	csr_set(sie, 1UL << IRQ_S_TIMER);
+	csr_set(sie, (1UL << IRQ_S_TIMER) | (1UL << IRQ_S_SOFT));
 }
 
 /*
@@ -34,4 +34,14 @@ void riscv64_timer_interrupt(void)
 void riscv64_guest_set_timer(void)
 {
 	csr_clear(hvip, 1UL << IRQ_VS_TIMER);
+}
+
+/*
+ * An IPI for this hart (SBI send_ipi, from the guest on some hart): pass
+ * it on. The guest clears it by clearing its sip.SSIP, which is hvip's.
+ */
+void riscv64_soft_interrupt(void)
+{
+	csr_clear(sip, 1UL << IRQ_S_SOFT);
+	csr_set(hvip, 1UL << IRQ_VS_SOFT);
 }

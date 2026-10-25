@@ -4,5 +4,6 @@
 void riscv64_virq_init(void);
 void riscv64_timer_interrupt(void);
 void riscv64_guest_set_timer(void);
+void riscv64_soft_interrupt(void);
 
 #endif

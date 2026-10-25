@@ -12,6 +12,9 @@ void riscv64_handle_trap(struct hv_trap_frame *frame)
 		/* sepc points at the ECALL itself */
 		frame->pc += 4;
 		break;
+	case RISCV_CAUSE_INTERRUPT | IRQ_S_SOFT:
+		riscv64_soft_interrupt();
+		break;
 	case RISCV_CAUSE_INTERRUPT | IRQ_S_TIMER:
 		riscv64_timer_interrupt();
 		break;
