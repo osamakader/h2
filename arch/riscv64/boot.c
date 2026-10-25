@@ -1,10 +1,12 @@
 #include <arch/boot.h>
+#include <arch/stage2.h>
 #include <arch/virq.h>
 #include <hv/hv.h>
 
 extern char __riscv64_trap_vector[];
 extern char __stack_top[];
 extern char __guest_stack_top[];
+extern char __image_start[], __image_end[];
 extern void riscv64_guest_entry(void);
 
 #define HSTATUS_SPV	(1UL << 7)
@@ -14,7 +16,8 @@ extern void riscv64_guest_entry(void);
 
 /*
  * Enter VS-mode at entry with a0, a1 = arg0, arg1; the guest may read the
- * cycle, time and instret counters and gets its interrupts. While the guest runs, sscratch holds
+ * cycle, time and instret counters and gets its interrupts, and sees
+ * memory through stage 2. While the guest runs, sscratch holds
  * h2's stack on this hart, for the trap vector.
  */
 void riscv64_enter_guest(unsigned long entry, unsigned long stack,
@@ -22,6 +25,7 @@ void riscv64_enter_guest(unsigned long entry, unsigned long stack,
 			 unsigned long arg1)
 {
 	riscv64_virq_init();
+	riscv64_stage2_enable();
 
 	/* bound to a0/a1 only after the call, which may clobber them */
 	register unsigned long a0 __asm__("a0") = arg0;
@@ -29,7 +33,6 @@ void riscv64_enter_guest(unsigned long entry, unsigned long stack,
 
 	__asm__ volatile(
 		"csrw stvec, %[trap]\n"
-		"csrw hgatp, zero\n"
 		"csrw vsatp, zero\n"
 		"csrw hcounteren, %[counters]\n"
 		"csrw sepc, %[entry]\n"
@@ -60,10 +63,24 @@ void riscv64_enter_guest(unsigned long entry, unsigned long stack,
 void riscv64_boot(unsigned long hartid, unsigned long dtb)
 {
 	hv_addr_t entry;
+	int loaded;
 
 	dtb = hv_main(dtb);
+	if (!riscv64_stage2_supported()) {
+		hv_console_write("h2: no Sv39x4 for stage 2\n");
+		loaded = -1;
+	} else {
+		loaded = hv_load_guest(dtb, &entry);
+	}
 
-	switch (hv_load_guest(dtb, &entry)) {
+	/* h2's pages are no business of a guest of its own (not built in) */
+	if (loaded == 1)
+		riscv64_stage2_hole((hv_addr_t)__image_start,
+				    ((hv_addr_t)__image_end + 0xfff) & ~0xfffUL);
+	if (loaded >= 0 && riscv64_stage2_init() < 0)
+		loaded = -1;
+
+	switch (loaded) {
 	case 1:
 		__asm__ volatile("fence.i" ::: "memory");
 		riscv64_enter_guest(entry, 0, (unsigned long)__stack_top,

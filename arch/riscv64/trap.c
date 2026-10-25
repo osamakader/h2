@@ -22,6 +22,14 @@ void riscv64_handle_trap(struct hv_trap_frame *frame)
 		hv_dump_trap(frame->cause & RISCV_CAUSE_INTERRUPT ?
 			     "unhandled riscv64 interrupt" :
 			     "unhandled riscv64 trap", frame);
+		if (frame->cause == RISCV_CAUSE_FETCH_GUEST_PAGE_FAULT ||
+		    frame->cause == RISCV_CAUSE_LOAD_GUEST_PAGE_FAULT ||
+		    frame->cause == RISCV_CAUSE_STORE_GUEST_PAGE_FAULT) {
+			/* htval: the guest physical address, shifted right by 2 */
+			hv_console_write("  gpa    ");
+			hv_console_hex(csr_read(htval) << 2 | (frame->value & 3));
+			hv_console_putchar('\n');
+		}
 		for (;;)
 			__asm__ volatile("wfi");
 	}
