@@ -18,6 +18,12 @@
 #define SBI_TIME_SET_TIMER	0
 #define SBI_EXT_HSM		0x48534dUL	/* "HSM" */
 #define SBI_EXT_SUSP		0x53555350UL	/* "SUSP" */
+#define SBI_EXT_RFNC		0x52464e43UL	/* "RFNC" */
+#define SBI_RFNC_SFENCE_VMA	1
+#define SBI_RFNC_SFENCE_VMA_ASID 2
+#define SBI_RFNC_HFENCE_FIRST	3
+#define SBI_RFNC_HFENCE_VVMA_ASID 5
+#define SBI_RFNC_HFENCE_VVMA	6
 #define SBI_HSM_HART_START	0
 #define SBI_HSM_HART_SUSPEND	3
 
@@ -95,6 +101,9 @@ static int sbi_unsupported(hv_addr_t ext, hv_addr_t fid)
 {
 	if (ext == SBI_EXT_HSM)
 		return fid == SBI_HSM_HART_SUSPEND;
+	/* fencing h2's stage 2 is not the guest's business */
+	if (ext == SBI_EXT_RFNC)
+		return fid >= SBI_RFNC_HFENCE_FIRST;
 	return ext == SBI_EXT_SUSP;
 }
 
@@ -120,6 +129,15 @@ void riscv64_sbi_call(struct hv_trap_frame *frame)
 	if ((ext == SBI_EXT_TIME && fid == SBI_TIME_SET_TIMER) ||
 	    ext == SBI_EXT_LEGACY_SET_TIMER)
 		riscv64_guest_set_timer();
+
+	/*
+	 * A remote sfence.vma from M-mode flushes the harts' HS-level
+	 * translations; the guest's are VS-level: hfence.vvma.
+	 */
+	if (ext == SBI_EXT_RFNC && fid == SBI_RFNC_SFENCE_VMA)
+		a[6] = SBI_RFNC_HFENCE_VVMA;
+	else if (ext == SBI_EXT_RFNC && fid == SBI_RFNC_SFENCE_VMA_ASID)
+		a[6] = SBI_RFNC_HFENCE_VVMA_ASID;
 
 	if (ext == SBI_EXT_HSM && fid == SBI_HSM_HART_START)
 		fw = hart_start(a);
