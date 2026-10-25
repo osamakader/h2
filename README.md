@@ -54,5 +54,6 @@ next to h2 (`make -C ../o2 ARCH=arm64`):
 make ARCH=arm64 run-o2       # O2=path/to/o2 if it is elsewhere
 ```
 
-riscv64 doesn't get as far yet: h2 doesn't pass interrupts on to the
-guest.
+and the same with `ARCH=riscv64`. On riscv64 the guest sees memory through
+an identity stage 2 that leaves out h2, and gets its timer, IPIs and
+external interrupts from h2; its PLIC claims and completions trap to h2.
