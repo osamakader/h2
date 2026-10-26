@@ -7,7 +7,7 @@ CROSS_COMPILE ?= aarch64-linux-gnu-
 ARCH_DIR := arch/arm64
 ARCH_CFLAGS := -mgeneral-regs-only
 ARCH_LDFLAGS :=
-ARCH_OBJS := entry.o boot.o vectors.o trap.o psci.o console.o guest.o
+ARCH_OBJS := entry.o boot.o vectors.o trap.o psci.o stage2.o console.o guest.o
 QEMU := qemu-system-aarch64
 QEMU_MACHINE := -machine virt,virtualization=on,gic-version=3 -cpu cortex-a57
 else ifeq ($(ARCH),riscv64)
@@ -31,7 +31,7 @@ COMMON_CFLAGS := \
 	-fno-pic -fno-pie -Wall -Wextra -Werror -O2 -MMD -MP \
 	-Iinclude -I$(ARCH_DIR)/include
 
-COMMON_OBJS := hv.o fdt.o elf.o guest_image.o
+COMMON_OBJS := hv.o fdt.o elf.o stage2.o guest_image.o
 
 # the guest: an ELF file to embed and load (default: the built-in guest)
 GUEST ?=

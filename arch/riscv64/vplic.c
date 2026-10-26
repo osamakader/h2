@@ -1,8 +1,8 @@
 #include <arch/csr.h>
-#include <arch/stage2.h>
 #include <arch/trap.h>
 #include <arch/virq.h>
 #include <hv/hv.h>
+#include <hv/stage2.h>
 
 /*
  * External interrupts for the guest. The hart's supervisor external
@@ -32,7 +32,7 @@
 
 void riscv64_vplic_init(void)
 {
-	riscv64_stage2_hole(PLIC_CONTEXT_BASE, PLIC_CONTEXT_END);
+	hv_stage2_hole(PLIC_CONTEXT_BASE, PLIC_CONTEXT_END);
 }
 
 /* hvip.VSEIP = sip.SEIP; while it is up, h2 needn't hear about it again */
