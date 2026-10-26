@@ -28,6 +28,7 @@ void riscv64_handle_trap(struct hv_trap_frame *frame)
 			break;
 		/* fall through */
 	default:
+		hv_console_lock();
 		hv_dump_trap(frame->cause & RISCV_CAUSE_INTERRUPT ?
 			     "unhandled riscv64 interrupt" :
 			     "unhandled riscv64 trap", frame);
@@ -39,6 +40,7 @@ void riscv64_handle_trap(struct hv_trap_frame *frame)
 			hv_console_hex(csr_read(htval) << 2 | (frame->value & 3));
 			hv_console_putchar('\n');
 		}
+		hv_console_unlock();
 		for (;;)
 			__asm__ volatile("wfi");
 	}
@@ -53,7 +55,9 @@ void riscv64_host_fault(void)
 	frame.pc = csr_read(sepc);
 	frame.value = csr_read(stval);
 	frame.status = csr_read(sstatus);
+	hv_console_lock();
 	hv_dump_trap("fault in h2", &frame);
+	hv_console_unlock();
 	for (;;)
 		__asm__ volatile("wfi");
 }

@@ -35,6 +35,8 @@ hv_addr_t hv_main(hv_addr_t dtb);
 int hv_load_guest(hv_addr_t dtb, hv_addr_t *entry);
 struct hv_hcall_ret hv_hypercall(hv_addr_t nr, hv_addr_t arg0);
 void hv_console_putchar(char ch);
+void hv_console_lock(void);
+void hv_console_unlock(void);
 void hv_console_write(const char *text);
 void hv_console_hex(hv_addr_t value);
 void hv_dump_trap(const char *what, const struct hv_trap_frame *frame);

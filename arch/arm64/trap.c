@@ -36,6 +36,7 @@ void arm64_handle_trap(struct hv_trap_frame *frame)
 		frame->pc += 4;
 		break;
 	default:
+		hv_console_lock();
 		hv_dump_trap("unhandled arm64 trap", frame);
 		if (ARM64_ESR_EC(frame->cause) == ARM64_ESR_EC_IABT_LOW ||
 		    ARM64_ESR_EC(frame->cause) == ARM64_ESR_EC_DABT_LOW) {
@@ -47,6 +48,7 @@ void arm64_handle_trap(struct hv_trap_frame *frame)
 			hv_console_hex((hpfar >> 4) << 12 | (frame->value & 0xfff));
 			hv_console_putchar('\n');
 		}
+		hv_console_unlock();
 		for (;;)
 			__asm__ volatile("wfe");
 	}
@@ -66,8 +68,10 @@ void arm64_unhandled_vector(unsigned long vector)
 	__asm__ volatile("mrs %0, ESR_EL2" : "=r"(frame.cause));
 	__asm__ volatile("mrs %0, FAR_EL2" : "=r"(frame.value));
 
+	hv_console_lock();
 	hv_console_write("h2: unexpected exception, vector ");
 	hv_console_hex(vector);
 	hv_console_putchar('\n');
 	hv_dump_trap("state", &frame);
+	hv_console_unlock();
 }

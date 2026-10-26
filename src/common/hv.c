@@ -1,3 +1,4 @@
+#include <hv/cpu.h>
 #include <hv/fdt.h>
 #include <hv/hv.h>
 
@@ -54,6 +55,19 @@ struct hv_hcall_ret hv_hypercall(hv_addr_t nr, hv_addr_t arg0)
 	}
 
 	return ret;
+}
+
+/* for messages of several lines from any CPU: one CPU's at a time */
+static struct hv_lock console_lock;
+
+void hv_console_lock(void)
+{
+	hv_lock(&console_lock);
+}
+
+void hv_console_unlock(void)
+{
+	hv_unlock(&console_lock);
 }
 
 void hv_console_write(const char *text)
