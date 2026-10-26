@@ -1,6 +1,7 @@
 #include <arch/boot.h>
 #include <arch/psci.h>
 #include <arch/trap.h>
+#include <hv/cpu.h>
 #include <hv/hv.h>
 
 /*
@@ -16,19 +17,11 @@
 #define PSCI_LAST		0x1f	/* PSCI's part of the standard range */
 
 #define PSCI_RET_NOT_SUPPORTED	(-1L)
-#define PSCI_RET_INVALID_PARAMS	(-2L)
-
-/* h2 numbers CPUs by MPIDR Aff0; Aff1..Aff3 must be 0 */
-#define MPIDR_AFF0(m)		((m) & 0xff)
-#define MPIDR_AFF_HIGHER	0xff00ffff00UL
+#define PSCI_RET_DENIED		(-3L)
+#define PSCI_RET_ALREADY_ON	(-4L)
+#define PSCI_RET_ON_PENDING	(-5L)
 
 extern char arm64_secondary_entry[];
-
-/* where each CPU enters the guest, from the guest's CPU_ON */
-static struct {
-	hv_addr_t entry;
-	hv_addr_t context;
-} guest_boot[HV_MAX_CPUS];
 
 static hv_addr_t firmware_smc(hv_addr_t fid, hv_addr_t a1, hv_addr_t a2,
 			      hv_addr_t a3)
@@ -49,21 +42,29 @@ static hv_addr_t firmware_smc(hv_addr_t fid, hv_addr_t a1, hv_addr_t a2,
 static hv_addr_t cpu_on(hv_addr_t fid, hv_addr_t mpidr, hv_addr_t entry,
 			hv_addr_t context)
 {
-	unsigned long cpu = MPIDR_AFF0(mpidr);
+	int fresh, slot = hv_cpu_claim(mpidr & MPIDR_AFFINITY, &fresh);
+	long ret;
 
-	if ((mpidr & MPIDR_AFF_HIGHER) || cpu >= HV_MAX_CPUS)
-		return (hv_addr_t)PSCI_RET_INVALID_PARAMS;
+	/* no slot left in h2 */
+	if (slot < 0)
+		return (hv_addr_t)PSCI_RET_DENIED;
 
-	guest_boot[cpu].entry = entry;
-	guest_boot[cpu].context = context;
+	hv_cpus[slot].guest_entry = entry;
+	hv_cpus[slot].guest_arg = context;
 
-	return firmware_smc(fid, mpidr, (hv_addr_t)arm64_secondary_entry, cpu);
+	ret = (long)firmware_smc(fid, mpidr,
+				 (hv_addr_t)arm64_secondary_entry, slot);
+	if (ret && ret != PSCI_RET_ALREADY_ON && ret != PSCI_RET_ON_PENDING &&
+	    fresh)
+		hv_cpu_release(slot);
+	return (hv_addr_t)ret;
 }
 
-void arm64_secondary_boot(unsigned long cpu)
+void arm64_secondary_boot(unsigned long slot)
 {
 	arm64_el2_init();
-	arm64_enter_guest(guest_boot[cpu].entry, 0, guest_boot[cpu].context);
+	arm64_enter_guest(hv_cpus[slot].guest_entry, 0,
+			  hv_cpus[slot].guest_arg);
 }
 
 /* calls whose entry point h2 would have to wrap: not yet */

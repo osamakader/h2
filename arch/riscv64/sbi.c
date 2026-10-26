@@ -2,6 +2,7 @@
 #include <arch/sbi.h>
 #include <arch/virq.h>
 #include <arch/trap.h>
+#include <hv/cpu.h>
 #include <hv/hv.h>
 
 /*
@@ -27,15 +28,11 @@
 #define SBI_HSM_HART_START	0
 #define SBI_HSM_HART_SUSPEND	3
 
-#define SBI_ERR_INVALID_PARAM	(-3L)
+#define SBI_ERR_FAILED		(-1L)
+
+#define SBI_ERR_ALREADY_AVAILABLE (-6L)
 
 extern char riscv64_secondary_entry[];
-
-/* where each hart enters the guest, from the guest's hart_start */
-static struct {
-	hv_addr_t entry;
-	hv_addr_t opaque;
-} guest_boot[HV_MAX_CPUS];
 
 struct sbiret {
 	hv_addr_t error;
@@ -63,19 +60,25 @@ static struct sbiret firmware_ecall(const hv_addr_t *a)
 static struct sbiret hart_start(const hv_addr_t *a)
 {
 	hv_addr_t fw[8] = { 0 };
-	hv_addr_t hartid = a[0];
+	int fresh, slot = hv_cpu_claim(a[0], &fresh);
+	struct sbiret ret;
 
-	if (hartid >= HV_MAX_CPUS)
-		return (struct sbiret){ (hv_addr_t)SBI_ERR_INVALID_PARAM, 0 };
+	/* no slot left in h2 */
+	if (slot < 0)
+		return (struct sbiret){ (hv_addr_t)SBI_ERR_FAILED, 0 };
 
-	guest_boot[hartid].entry = a[1];
-	guest_boot[hartid].opaque = a[2];
+	hv_cpus[slot].guest_entry = a[1];
+	hv_cpus[slot].guest_arg = a[2];
 
-	fw[0] = hartid;
+	fw[0] = a[0];
 	fw[1] = (hv_addr_t)riscv64_secondary_entry;
+	fw[2] = slot;
 	fw[6] = SBI_HSM_HART_START;
 	fw[7] = SBI_EXT_HSM;
-	return firmware_ecall(fw);
+	ret = firmware_ecall(fw);
+	if (ret.error && (long)ret.error != SBI_ERR_ALREADY_AVAILABLE && fresh)
+		hv_cpu_release(slot);
+	return ret;
 }
 
 /* h2's own timer requests, for this hart */
@@ -89,11 +92,11 @@ void riscv64_sbi_set_timer(hv_addr_t stime)
 	firmware_ecall(fw);
 }
 
-void riscv64_secondary_boot(unsigned long hartid)
+void riscv64_secondary_boot(unsigned long hartid, unsigned long slot)
 {
-	riscv64_enter_guest(guest_boot[hartid].entry, 0,
-			    (unsigned long)(hv_cpu_stacks[hartid] + HV_STACK_SIZE),
-			    hartid, guest_boot[hartid].opaque);
+	riscv64_enter_guest(hv_cpus[slot].guest_entry, 0,
+			    HV_CPU_STACK_TOP(slot), hartid,
+			    hv_cpus[slot].guest_arg);
 }
 
 /* calls whose entry point h2 would have to wrap: not yet */

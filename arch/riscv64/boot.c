@@ -2,11 +2,11 @@
 #include <arch/stage2.h>
 #include <arch/virq.h>
 #include <arch/vplic.h>
+#include <hv/cpu.h>
 #include <hv/hv.h>
 #include <hv/stage2.h>
 
 extern char __riscv64_trap_vector[];
-extern char __stack_top[];
 extern char __guest_stack_top[];
 extern char __image_start[], __image_end[];
 extern void riscv64_guest_entry(void);
@@ -78,6 +78,7 @@ void riscv64_boot(unsigned long hartid, unsigned long dtb)
 	hv_addr_t entry;
 	int loaded;
 
+	hv_cpu_boot(hartid);
 	dtb = hv_main(dtb);
 	if (!riscv64_stage2_supported()) {
 		hv_console_write("h2: no Sv39x4 for stage 2\n");
@@ -97,12 +98,12 @@ void riscv64_boot(unsigned long hartid, unsigned long dtb)
 	switch (loaded) {
 	case 1:
 		__asm__ volatile("fence.i" ::: "memory");
-		riscv64_enter_guest(entry, 0, (unsigned long)__stack_top,
+		riscv64_enter_guest(entry, 0, HV_CPU_STACK_TOP(0),
 				    hartid, dtb);
 	case 0:
 		riscv64_enter_guest((unsigned long)riscv64_guest_entry,
 				    (unsigned long)__guest_stack_top,
-				    (unsigned long)__stack_top, hartid, dtb);
+				    HV_CPU_STACK_TOP(0), hartid, dtb);
 	default:
 		for (;;)
 			__asm__ volatile("wfi");

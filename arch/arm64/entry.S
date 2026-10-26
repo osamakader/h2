@@ -5,8 +5,9 @@
 .type _start, %function
 _start:
 	/* x0: the DTB, from a boot loader that starts us like Linux */
-	ldr x1, =__stack_top
-	mov sp, x1
+	ldr x1, =hv_cpu_stacks		/* slot 0's stack */
+	mov x2, #HV_STACK_SIZE
+	add sp, x1, x2
 	bl arm64_boot
 
 1:
@@ -15,7 +16,7 @@ _start:
 
 /*
  * Secondary CPUs, started by PSCI CPU_ON on the guest's behalf, enter
- * here at EL2 with h2's CPU index in x0 (CPU_ON's context id).
+ * here at EL2 with their h2 slot in x0 (CPU_ON's context id).
  */
 .text
 .global arm64_secondary_entry

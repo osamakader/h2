@@ -3,8 +3,10 @@
 .section .text.boot, "ax"
 .global _start
 _start:
-	/* a0: hartid, a1: the DTB, from the firmware */
-	la sp, __stack_top
+	/* a0: hartid, a1: the DTB, from the firmware; slot 0's stack */
+	la sp, hv_cpu_stacks
+	li t0, HV_STACK_SIZE
+	add sp, sp, t0
 	csrw sscratch, zero
 	la t0, __riscv64_trap_vector
 	csrw stvec, t0
@@ -16,13 +18,13 @@ _start:
 
 /*
  * Harts started by SBI HSM hart_start on the guest's behalf enter here
- * in HS-mode with their hartid in a0.
+ * in HS-mode with their hartid in a0 and their h2 slot in a1 (opaque).
  */
 .text
 .global riscv64_secondary_entry
 riscv64_secondary_entry:
 	la sp, hv_cpu_stacks
-	addi t0, a0, 1
+	addi t0, a1, 1
 	li t1, HV_STACK_SIZE
 	mul t0, t0, t1
 	add sp, sp, t0

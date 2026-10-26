@@ -1,5 +1,6 @@
 #include <arch/boot.h>
 #include <arch/stage2.h>
+#include <hv/cpu.h>
 #include <hv/hv.h>
 #include <hv/stage2.h>
 
@@ -95,12 +96,15 @@ void arm64_enter_guest(unsigned long entry, unsigned long stack,
 
 void arm64_boot(unsigned long dtb)
 {
-	hv_addr_t entry;
+	hv_addr_t entry, mpidr;
 	int loaded;
 
 	if (read_current_el() != 2)
 		for (;;)
 			__asm__ volatile("wfe");
+
+	__asm__ volatile("mrs %0, MPIDR_EL1" : "=r"(mpidr));
+	hv_cpu_boot(mpidr & MPIDR_AFFINITY);
 
 	/* report faults in h2 from here on */
 	__asm__ volatile("msr VBAR_EL2, %0; isb" :: "r"(__arm64_vectors));

@@ -31,7 +31,7 @@ COMMON_CFLAGS := \
 	-fno-pic -fno-pie -Wall -Wextra -Werror -O2 -MMD -MP \
 	-Iinclude -I$(ARCH_DIR)/include
 
-COMMON_OBJS := hv.o fdt.o elf.o stage2.o guest_image.o
+COMMON_OBJS := hv.o cpu.o fdt.o elf.o stage2.o guest_image.o
 
 # the guest: an ELF file to embed and load (default: the built-in guest)
 GUEST ?=

@@ -1,8 +1,6 @@
 #include <hv/fdt.h>
 #include <hv/hv.h>
 
-char hv_cpu_stacks[HV_MAX_CPUS][HV_STACK_SIZE] __attribute__((aligned(16)));
-
 #define HV_PAGE_SIZE	0x1000UL
 
 extern char __image_start[], __image_end[];

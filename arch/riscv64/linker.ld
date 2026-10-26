@@ -39,10 +39,6 @@ SECTIONS
 		/* in .bss, so the data segment is never empty */
 		. = ALIGN(16);
 		. += 0x4000;
-		__stack_top = .;
-
-		. = ALIGN(16);
-		. += 0x4000;
 		__guest_stack_top = .;
 	} :data
 
