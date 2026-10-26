@@ -1,11 +1,15 @@
 #include <arch/boot.h>
+#include <arch/stage2.h>
 #include <hv/hv.h>
+#include <hv/stage2.h>
 
 extern char __arm64_vectors[];
 extern char __guest_stack_top[];
+extern char __image_start[], __image_end[];
 extern void arm64_guest_entry(void);
 
 #define HCR_EL2_RW		(1UL << 31)
+#define HCR_EL2_VM		(1UL << 0)	/* stage 2 */
 #define HCR_EL2_TSC		(1UL << 19)	/* guest SMCs trap to h2 */
 #define CNTHCTL_EL1PCTEN	(1UL << 0)
 #define CNTHCTL_EL1PCEN		(1UL << 1)
@@ -24,16 +28,18 @@ static inline unsigned long read_current_el(void)
 }
 
 /*
- * Per CPU: EL1 gets the physical timer and counter, FP/SIMD and (with
- * GICv3) the GIC system registers without trapping, and sees this CPU's
- * MIDR and MPIDR.
+ * Per CPU: EL1 sees memory through stage 2, gets the physical timer and
+ * counter, FP/SIMD and (with GICv3) the GIC system registers without
+ * trapping, and sees this CPU's MIDR and MPIDR.
  */
 void arm64_el2_init(void)
 {
 	unsigned long pfr0, value;
 
 	__asm__ volatile("msr VBAR_EL2, %0" :: "r"(__arm64_vectors));
-	__asm__ volatile("msr HCR_EL2, %0" :: "r"(HCR_EL2_RW | HCR_EL2_TSC));
+	arm64_stage2_enable();
+	__asm__ volatile("msr HCR_EL2, %0" ::
+			 "r"(HCR_EL2_RW | HCR_EL2_TSC | HCR_EL2_VM));
 
 	__asm__ volatile("mrs %0, CNTHCTL_EL2" : "=r"(value));
 	value |= CNTHCTL_EL1PCTEN | CNTHCTL_EL1PCEN;
@@ -90,17 +96,30 @@ void arm64_enter_guest(unsigned long entry, unsigned long stack,
 void arm64_boot(unsigned long dtb)
 {
 	hv_addr_t entry;
+	int loaded;
 
 	if (read_current_el() != 2)
 		for (;;)
 			__asm__ volatile("wfe");
 
+	/* report faults in h2 from here on */
+	__asm__ volatile("msr VBAR_EL2, %0; isb" :: "r"(__arm64_vectors));
+
 	if (!dtb)
 		dtb = QEMU_VIRT_RAM_BASE;
 	dtb = hv_main(dtb);
-	arm64_el2_init();
+	loaded = hv_load_guest(dtb, &entry);
 
-	switch (hv_load_guest(dtb, &entry)) {
+	/* h2's pages are no business of a guest of its own (not built in) */
+	if (loaded == 1)
+		hv_stage2_hole((hv_addr_t)__image_start,
+			       ((hv_addr_t)__image_end + 0xfff) & ~0xfffUL);
+	if (loaded >= 0 && arm64_stage2_init() < 0)
+		loaded = -1;
+	if (loaded >= 0)
+		arm64_el2_init();
+
+	switch (loaded) {
 	case 1:
 		/* the guest's code went out through the data side */
 		__asm__ volatile("dsb sy; ic iallu; dsb sy; isb" ::: "memory");

@@ -3,6 +3,8 @@
 
 #define ARM64_ESR_EC(esr)	(((esr) >> 26) & 0x3f)
 #define ARM64_ESR_EC_HVC64	0x16
+#define ARM64_ESR_EC_IABT_LOW	0x20
+#define ARM64_ESR_EC_DABT_LOW	0x24
 #define ARM64_ESR_EC_SMC64	0x17
 
 /* SMC Calling Convention: the function id in w0 */

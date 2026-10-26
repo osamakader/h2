@@ -37,6 +37,16 @@ void arm64_handle_trap(struct hv_trap_frame *frame)
 		break;
 	default:
 		hv_dump_trap("unhandled arm64 trap", frame);
+		if (ARM64_ESR_EC(frame->cause) == ARM64_ESR_EC_IABT_LOW ||
+		    ARM64_ESR_EC(frame->cause) == ARM64_ESR_EC_DABT_LOW) {
+			unsigned long hpfar;
+
+			/* HPFAR_EL2.FIPA: the faulting IPA's page */
+			__asm__ volatile("mrs %0, HPFAR_EL2" : "=r"(hpfar));
+			hv_console_write("  ipa    ");
+			hv_console_hex((hpfar >> 4) << 12 | (frame->value & 0xfff));
+			hv_console_putchar('\n');
+		}
 		for (;;)
 			__asm__ volatile("wfe");
 	}

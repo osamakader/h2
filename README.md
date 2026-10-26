@@ -40,9 +40,10 @@ starts it in HS-mode (`-cpu rv64,h=true`).
 built-in guest. h2 loads its segments at their physical addresses and
 enters it in EL1 / VS-mode with the MMU off, as firmware would: on arm64
 with the DTB in x0, on riscv64 with the hartid in a0 and the DTB in a1.
-h2 reserves its own memory in the DTB (`/memreserve/`), forwards PSCI /
-SBI calls to the firmware, and starts the CPUs the guest starts. Devices
-are passed through.
+h2 reserves its own memory in the DTB (`/memreserve/`) and keeps the
+guest out of it with an identity stage 2 translation, forwards PSCI / SBI
+calls to the firmware, and starts the CPUs the guest starts. Devices are
+passed through.
 
 h2 links at 0x40100000 on arm64 and 0x84000000 on riscv64; the guest must
 fit around it.
@@ -54,6 +55,6 @@ next to h2 (`make -C ../o2 ARCH=arm64`):
 make ARCH=arm64 run-o2       # O2=path/to/o2 if it is elsewhere
 ```
 
-and the same with `ARCH=riscv64`. On riscv64 the guest sees memory through
-an identity stage 2 that leaves out h2, and gets its timer, IPIs and
-external interrupts from h2; its PLIC claims and completions trap to h2.
+and the same with `ARCH=riscv64`. On riscv64 the guest gets its timer,
+IPIs and external interrupts from h2; its PLIC claims and completions trap
+to h2.
