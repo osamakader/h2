@@ -1,10 +1,10 @@
+#include <arch/platform.h>
 #include <stdint.h>
 
-#define ARM64_UART0_BASE	0x09000000UL
 #define PL011_FR		0x18
 #define PL011_FR_TXFF		(1U << 5)
 
-static volatile uint32_t *const uart0 = (volatile uint32_t *)ARM64_UART0_BASE;
+static volatile uint32_t *const uart0 = (volatile uint32_t *)PLATFORM_UART0;
 
 void hv_console_putchar(char ch)
 {

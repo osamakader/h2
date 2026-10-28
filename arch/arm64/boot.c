@@ -1,4 +1,5 @@
 #include <arch/boot.h>
+#include <arch/platform.h>
 #include <arch/stage2.h>
 #include <hv/cpu.h>
 #include <hv/hv.h>
@@ -18,8 +19,6 @@ extern void arm64_guest_entry(void);
 #define ICC_SRE_EL2_VALUE	0xfUL		/* SRE, DFB, DIB, Enable */
 #define ID_AA64PFR0_GIC(v)	(((v) >> 24) & 0xf)
 
-/* qemu virt: ELF kernels get no x0, but the DTB at the start of RAM */
-#define QEMU_VIRT_RAM_BASE	0x40000000UL
 
 static inline unsigned long read_current_el(void)
 {
@@ -109,8 +108,9 @@ void arm64_boot(unsigned long dtb)
 	/* report faults in h2 from here on */
 	__asm__ volatile("msr VBAR_EL2, %0; isb" :: "r"(__arm64_vectors));
 
+	/* qemu virt: ELF kernels get no x0, but the DTB at the start of RAM */
 	if (!dtb)
-		dtb = QEMU_VIRT_RAM_BASE;
+		dtb = PLATFORM_RAM_BASE;
 	dtb = hv_main(dtb);
 	loaded = hv_load_guest(dtb, &entry);
 

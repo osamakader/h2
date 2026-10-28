@@ -8,11 +8,8 @@ PHDRS
 
 SECTIONS
 {
-	/*
-	 * qemu puts the DTB (1MB) at the start of RAM, 0x40000000, only if
-	 * it fits below the lowest ELF segment
-	 */
-	. = 0x40100000;
+	/* from the Makefile: where the platform wants h2 */
+	. = H2_LOAD_ADDR;
 	__image_start = .;
 
 	.text : ALIGN(4096) {

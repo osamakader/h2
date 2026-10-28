@@ -5,8 +5,22 @@ BUILD_DIR := build/$(ARCH)
 ifeq ($(ARCH),arm64)
 CROSS_COMPILE ?= aarch64-linux-gnu-
 ARCH_DIR := arch/arm64
-ARCH_CFLAGS := -mgeneral-regs-only
-ARCH_LDFLAGS :=
+# the machine: qemu virt, or rpi4 (Raspberry Pi 4; qemu -machine raspi4b)
+PLATFORM ?= virt
+ifeq ($(PLATFORM),virt)
+# qemu puts the DTB (1MB) at the start of RAM, 0x40000000, only if it
+# fits below the lowest ELF segment
+LOAD_ADDR := 0x40100000
+else ifeq ($(PLATFORM),rpi4)
+# RAM from 0: clear of the firmware's low pages, o2 at 0x200000 and
+# qemu's DTB at 128MB
+LOAD_ADDR := 0x1000000
+BUILD_DIR := build/arm64-rpi4
+else
+$(error Unsupported PLATFORM=$(PLATFORM). Use virt or rpi4)
+endif
+ARCH_CFLAGS := -mgeneral-regs-only -DPLATFORM_$(PLATFORM)
+ARCH_LDFLAGS := --defsym=H2_LOAD_ADDR=$(LOAD_ADDR)
 ARCH_OBJS := entry.o boot.o vectors.o trap.o psci.o stage2.o console.o guest.o
 QEMU := qemu-system-aarch64
 QEMU_MACHINE := -machine virt,virtualization=on,gic-version=3 -cpu cortex-a57
