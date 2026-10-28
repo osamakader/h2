@@ -126,6 +126,10 @@ void arm64_boot(unsigned long dtb)
 		loaded = -1;
 	if (loaded >= 0)
 		arm64_el2_init();
+#ifdef PLATFORM_SPIN_TABLE
+	if (loaded >= 0)
+		arm64_spin_take(mpidr);
+#endif
 
 	switch (loaded) {
 	case 1:

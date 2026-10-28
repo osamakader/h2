@@ -16,12 +16,14 @@ else ifeq ($(PLATFORM),rpi4)
 # qemu's DTB at 128MB
 LOAD_ADDR := 0x1000000
 BUILD_DIR := build/arm64-rpi4
+ARCH_PLATFORM_OBJS := spintable.o
 else
 $(error Unsupported PLATFORM=$(PLATFORM). Use virt or rpi4)
 endif
 ARCH_CFLAGS := -mgeneral-regs-only -DPLATFORM_$(PLATFORM)
 ARCH_LDFLAGS := --defsym=H2_LOAD_ADDR=$(LOAD_ADDR)
-ARCH_OBJS := entry.o boot.o vectors.o trap.o psci.o stage2.o console.o guest.o
+ARCH_OBJS := entry.o boot.o vectors.o trap.o psci.o stage2.o console.o guest.o \
+	$(ARCH_PLATFORM_OBJS)
 QEMU := qemu-system-aarch64
 QEMU_MACHINE := -machine virt,virtualization=on,gic-version=3 -cpu cortex-a57
 else ifeq ($(ARCH),riscv64)

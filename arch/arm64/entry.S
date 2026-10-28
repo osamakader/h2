@@ -47,3 +47,27 @@ arm64_secondary_entry:
 1:
 	wfe
 	b 1b
+
+#ifdef PLATFORM_SPIN_TABLE
+/*
+ * Secondary CPUs h2 takes from the firmware's spin table enter here at
+ * EL2 (arm64_spin_take); their slot is in arm64_spin_slot[Aff0].
+ */
+.global arm64_spin_entry
+.type arm64_spin_entry, %function
+arm64_spin_entry:
+	mrs x0, mpidr_el1
+	and x0, x0, #(PLATFORM_SPIN_CPUS - 1)
+	ldr x1, =arm64_spin_slot
+	ldrsw x2, [x1, x0, lsl #2]
+	add x2, x2, #1
+	ldr x1, =hv_cpu_stacks
+	mov x3, #HV_STACK_SIZE
+	madd x1, x2, x3, x1
+	mov sp, x1
+	bl arm64_spin_park
+
+1:
+	wfe
+	b 1b
+#endif
