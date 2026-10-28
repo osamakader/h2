@@ -17,6 +17,12 @@ else ifeq ($(PLATFORM),rpi4)
 LOAD_ADDR := 0x1000000
 BUILD_DIR := build/arm64-rpi4
 ARCH_PLATFORM_OBJS := spintable.o
+# qemu starts the raw image as the Pi firmware does, with its DTB; the
+# machine has 4 CPUs and 2GB
+DTB ?= $(BUILD_DIR)/bcm2711-rpi-4-b.dtb
+QEMU_BOARD = -machine raspi4b -dtb $(DTB)
+QEMU_KERNEL = $(BUILD_DIR)/h2.bin
+RUN_NEEDS = $(DTB)
 else
 $(error Unsupported PLATFORM=$(PLATFORM). Use virt or rpi4)
 endif
@@ -96,27 +102,42 @@ $(BUILD_DIR)/arch/%.o: $(ARCH_DIR)/%.S
 clean:
 	rm -rf build
 
-# qemu virt with h2 and whatever guest it was built with
+# qemu with h2 and whatever guest it was built with: virt, or raspi4b
 CPUS ?= 3
 MEM ?= 128M
 QEMU_ARGS ?=
+QEMU_BOARD ?= $(QEMU_MACHINE) -m $(MEM) -smp $(CPUS)
+QEMU_KERNEL ?= $(BUILD_DIR)/h2.elf
 
-run: all
-	$(QEMU) $(QEMU_MACHINE) -m $(MEM) -smp $(CPUS) -nographic \
-		-kernel $(BUILD_DIR)/h2.elf $(QEMU_ARGS)
+run: all $(RUN_NEEDS)
+	$(QEMU) $(QEMU_BOARD) -nographic -kernel $(QEMU_KERNEL) $(QEMU_ARGS)
 
-# o2 as the guest, with its disk and network, as o2's own make qemu
+# the Pi 4's device tree, from the firmware release o2 uses
+$(BUILD_DIR)/bcm2711-rpi-4-b.dtb:
+	@mkdir -p $(dir $@)
+	curl -sSfL -o $@ https://github.com/raspberrypi/firmware/raw/1.20260915/boot/bcm2711-rpi-4-b.dtb
+
+# o2 as the guest, with its disk (and network), as o2's own make qemu;
+# o2 builds into the same build/<arch>[-<platform>] directories
 O2 ?= ../o2
-O2_BUILD ?= $(O2)/build/$(ARCH)
+O2_BUILD ?= $(O2)/$(BUILD_DIR)
+ifeq ($(PLATFORM),rpi4)
+O2_DISK := sd.img
+O2_QEMU_ARGS := -drive file=$(O2_BUILD)/sd.img,if=sd,format=raw
+O2_RUN_ARGS := DTB=$(O2_BUILD)/bcm2711-rpi-4-b.dtb
+else
+O2_DISK := fs.img
 O2_QEMU_ARGS := -global virtio-mmio.force-legacy=false \
 	-drive file=$(O2_BUILD)/fs.img,if=none,format=raw,id=x0 \
 	-device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0 \
 	-netdev user,id=net0 -device virtio-net-device,netdev=net0,bus=virtio-mmio-bus.1
+endif
 
 run-o2:
-	@test -f $(O2_BUILD)/kernel.elf -a -f $(O2_BUILD)/fs.img || \
-		{ echo "no o2 in $(O2_BUILD): make -C $(O2) ARCH=$(ARCH)"; exit 1; }
-	$(MAKE) run GUEST=$(O2_BUILD)/kernel.elf \
+	@test -f $(O2_BUILD)/kernel.elf -a -f $(O2_BUILD)/$(O2_DISK) || \
+		{ echo "no o2 in $(O2_BUILD): make -C $(O2) ARCH=$(ARCH)" \
+			"$(if $(filter rpi4,$(PLATFORM)),PLATFORM=rpi4)"; exit 1; }
+	$(MAKE) run GUEST=$(O2_BUILD)/kernel.elf $(O2_RUN_ARGS) \
 		QEMU_ARGS='$(O2_QEMU_ARGS) $(QEMU_ARGS)'
 
 -include $(OBJS:.o=.d)
