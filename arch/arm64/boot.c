@@ -98,9 +98,13 @@ void arm64_boot(unsigned long dtb)
 	hv_addr_t entry, mpidr;
 	int loaded;
 
-	if (read_current_el() != 2)
+	if (read_current_el() != 2) {
+		hv_console_write("h2: started in EL");
+		hv_console_putchar('0' + (char)read_current_el());
+		hv_console_write(", not EL2 (qemu: -machine virtualization=on)\n");
 		for (;;)
 			__asm__ volatile("wfe");
+	}
 
 	__asm__ volatile("mrs %0, MPIDR_EL1" : "=r"(mpidr));
 	hv_cpu_boot(mpidr & MPIDR_AFFINITY);
