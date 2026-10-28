@@ -58,3 +58,33 @@ make ARCH=arm64 run-o2       # O2=path/to/o2 if it is elsewhere
 and the same with `ARCH=riscv64`. On riscv64 the guest gets its timer,
 IPIs and external interrupts from h2; its PLIC claims and completions trap
 to h2.
+
+## Raspberry Pi 4
+
+`PLATFORM=rpi4` builds h2 for the Pi 4 (arm64) into `build/arm64-rpi4`:
+`h2.bin` is a raw image with an arm64 Image header, linked at 0x1000000,
+so the firmware loads it as it loads Linux and starts it in EL2 with the
+DTB in x0. The console is the PL011 (uart0), as the firmware set it up.
+The firmware keeps CPUs 1-3 in its spin table; h2 takes them at boot and
+has them wait on the same spin table for the guest, which starts them as
+its DTB says, through h2. The DTB is passed on as the firmware made it.
+
+On qemu's raspi4b (qemu 9.0 or later):
+
+```sh
+make ARCH=arm64 PLATFORM=rpi4 run        # the built-in guest; fetches the DTB
+make -C ../o2 ARCH=arm64 PLATFORM=rpi4   # o2 for the Pi: kernel.elf, sd.img
+make ARCH=arm64 PLATFORM=rpi4 run-o2
+```
+
+On a real Pi 4, starting from o2's SD card (o2's README: `tools/rpi4-card.sh`):
+
+1. `make ARCH=arm64 PLATFORM=rpi4 GUEST=../o2/build/arm64-rpi4/kernel.elf`
+2. Copy `build/arm64-rpi4/h2.bin` to the card's first (FAT) partition as
+   `h2.img`, and in its `config.txt` set `kernel=h2.img` and
+   `kernel_address=0x1000000`. o2 is inside `h2.img`; h2 puts it at
+   0x200000, where o2's own `kernel8.img` would have gone.
+3. The serial console is the same as o2's (GPIO 14/15, 115200 8N1).
+
+This has been run on qemu's raspi4b only, not yet on a board.
+
