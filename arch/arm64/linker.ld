@@ -40,4 +40,5 @@ SECTIONS
 	} :data
 
 	__image_end = .;
+	__image_size = __image_end - __image_start;	/* for the Image header */
 }
