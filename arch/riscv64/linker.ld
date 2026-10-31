@@ -26,13 +26,16 @@ SECTIONS
 		*(.rodata*)
 	} :text
 
+	/* with the small data the compiler puts in .sdata / .sbss */
 	.data : ALIGN(4096) {
 		*(.data*)
+		*(.sdata*)
 	} :data
 
 	.bss : ALIGN(4096) {
 		__bss_start = .;
 		*(.bss*)
+		*(.sbss*)
 		*(COMMON)
 		__bss_end = .;
 
