@@ -3,6 +3,17 @@
 .section .text.boot, "ax"
 .global _start
 _start:
+	/*
+	 * Zero .bss: boot loaders leave whatever that memory held. Only
+	 * here, on the boot hart: the others come later, to a .bss in use.
+	 */
+	la t0, __bss_start
+	la t1, __bss_end
+1:	bgeu t0, t1, 2f
+	sd zero, 0(t0)
+	addi t0, t0, 8
+	j 1b
+2:
 	/* a0: hartid, a1: the DTB, from the firmware; slot 0's stack */
 	la sp, hv_cpu_stacks
 	li t0, HV_STACK_SIZE

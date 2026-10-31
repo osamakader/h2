@@ -42,6 +42,18 @@ _start:
 	b.ne 2f
 	el2_controls
 2:
+	/*
+	 * Zero .bss: boot loaders leave whatever that memory held (qemu
+	 * starts with it zeroed, a real board doesn't). Only here, on the
+	 * boot CPU: the others come later, to a .bss already in use.
+	 */
+	ldr x9, =__bss_start
+	ldr x10, =__bss_end
+3:	cmp x9, x10
+	b.hs 4f
+	str xzr, [x9], #8
+	b 3b
+4:
 	/* x0: the DTB, from a boot loader that starts us like Linux */
 	ldr x1, =hv_cpu_stacks		/* slot 0's stack */
 	mov x2, #HV_STACK_SIZE

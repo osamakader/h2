@@ -37,6 +37,7 @@ SECTIONS
 		*(.bss*)
 		*(.sbss*)
 		*(COMMON)
+		. = ALIGN(8);		/* entry.S zeroes it 8 bytes at a time */
 		__bss_end = .;
 
 		/* in .bss, so the data segment is never empty */
