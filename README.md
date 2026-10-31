@@ -55,7 +55,14 @@ next to h2 (`make -C ../o2 ARCH=arm64`):
 make ARCH=arm64 run-o2       # O2=path/to/o2 if it is elsewhere
 ```
 
-and the same with `ARCH=riscv64`. On riscv64 the guest gets its timer,
+and the same with `ARCH=riscv64`. `GPU=1` takes o2's build with graphics
+(`make -C ../o2 ... GPU=1`: build/<arch>[-rpi4]-gpu) and, on virt, gives
+it o2's virtio GPU, keyboard and tablet; `GUI=1` opens a window showing
+the screen, the console staying in the terminal:
+
+```sh
+make ARCH=arm64 GPU=1 GUI=1 run-o2
+``` On riscv64 the guest gets its timer,
 IPIs and external interrupts from h2; its PLIC claims and completions trap
 to h2.
 
@@ -80,6 +87,8 @@ make ARCH=arm64 PLATFORM=rpi4 run-o2
 On a real Pi 4, starting from o2's SD card (o2's README: `tools/rpi4-card.sh`):
 
 1. `make ARCH=arm64 PLATFORM=rpi4 GUEST=../o2/build/arm64-rpi4/kernel.elf`
+   (with graphics on HDMI: o2's GPU=1 card, `GPU=1 tools/rpi4-card.sh`, and
+   `GUEST=../o2/build/arm64-rpi4-gpu/kernel.elf`)
 2. Mount the card's first (FAT) partition and run
    `tools/rpi4-install.sh /path/to/boot`: it copies `h2.bin` there as
    `h2.img` and sets `kernel=h2.img` and `kernel_address` (h2's load

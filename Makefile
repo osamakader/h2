@@ -110,9 +110,11 @@ MEM ?= 128M
 QEMU_ARGS ?=
 QEMU_BOARD ?= $(QEMU_MACHINE) -m $(MEM) -smp $(CPUS)
 QEMU_KERNEL ?= $(BUILD_DIR)/h2.elf
+# GUI=1: a window showing the screen; the console stays here
+QEMU_CONSOLE = $(if $(filter 1,$(GUI)),-serial mon:stdio,-nographic)
 
 run: all $(RUN_NEEDS)
-	$(QEMU) $(QEMU_BOARD) -nographic -kernel $(QEMU_KERNEL) $(QEMU_ARGS)
+	$(QEMU) $(QEMU_BOARD) $(QEMU_CONSOLE) -kernel $(QEMU_KERNEL) $(QEMU_ARGS)
 
 # the Pi 4's device tree, from the firmware release o2 uses
 $(BUILD_DIR)/bcm2711-rpi-4-b.dtb:
@@ -120,9 +122,10 @@ $(BUILD_DIR)/bcm2711-rpi-4-b.dtb:
 	curl -sSfL -o $@ https://github.com/raspberrypi/firmware/raw/1.20260915/boot/bcm2711-rpi-4-b.dtb
 
 # o2 as the guest, with its disk (and network), as o2's own make qemu;
-# o2 builds into the same build/<arch>[-<platform>] directories
+# o2 builds into the same build/<arch>[-<platform>] directories, and
+# with graphics (GPU=1) into build/<arch>[-<platform>]-gpu
 O2 ?= ../o2
-O2_BUILD ?= $(O2)/$(BUILD_DIR)
+O2_BUILD ?= $(O2)/$(BUILD_DIR)$(if $(filter 1,$(GPU)),-gpu)
 ifeq ($(PLATFORM),rpi4)
 O2_DISK := sd.img
 O2_QEMU_ARGS := -drive file=$(O2_BUILD)/sd.img,if=sd,format=raw
@@ -133,12 +136,19 @@ O2_QEMU_ARGS := -global virtio-mmio.force-legacy=false \
 	-drive file=$(O2_BUILD)/fs.img,if=none,format=raw,id=x0 \
 	-device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0 \
 	-netdev user,id=net0 -device virtio-net-device,netdev=net0,bus=virtio-mmio-bus.1
+ifeq ($(GPU),1)
+# o2's screen, keyboard and pointer (the host's, absolute)
+O2_QEMU_ARGS += -device virtio-gpu-device,bus=virtio-mmio-bus.2 \
+	-device virtio-keyboard-device,bus=virtio-mmio-bus.3 \
+	-device virtio-tablet-device,bus=virtio-mmio-bus.4
+endif
 endif
 
 run-o2:
 	@test -f $(O2_BUILD)/kernel.elf -a -f $(O2_BUILD)/$(O2_DISK) || \
 		{ echo "no o2 in $(O2_BUILD): make -C $(O2) ARCH=$(ARCH)" \
-			"$(if $(filter rpi4,$(PLATFORM)),PLATFORM=rpi4)"; exit 1; }
+			"$(if $(filter rpi4,$(PLATFORM)),PLATFORM=rpi4)" \
+			"$(if $(filter 1,$(GPU)),GPU=1)"; exit 1; }
 	$(MAKE) run GUEST=$(O2_BUILD)/kernel.elf $(O2_RUN_ARGS) \
 		QEMU_ARGS='$(O2_QEMU_ARGS) $(QEMU_ARGS)'
 
