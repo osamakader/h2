@@ -80,11 +80,15 @@ make ARCH=arm64 PLATFORM=rpi4 run-o2
 On a real Pi 4, starting from o2's SD card (o2's README: `tools/rpi4-card.sh`):
 
 1. `make ARCH=arm64 PLATFORM=rpi4 GUEST=../o2/build/arm64-rpi4/kernel.elf`
-2. Copy `build/arm64-rpi4/h2.bin` to the card's first (FAT) partition as
-   `h2.img`, and in its `config.txt` set `kernel=h2.img` and
-   `kernel_address=0x1000000`. o2 is inside `h2.img`; h2 puts it at
-   0x200000, where o2's own `kernel8.img` would have gone.
-3. The serial console is the same as o2's (GPIO 14/15, 115200 8N1).
+2. Mount the card's first (FAT) partition and run
+   `tools/rpi4-install.sh /path/to/boot`: it copies `h2.bin` there as
+   `h2.img` and sets `kernel=h2.img` and `kernel_address` (h2's load
+   address, 0x1000000) in `config.txt`, keeping o2's as `config.txt.o2`.
+   o2 is inside `h2.img`; h2 puts it at 0x200000, where o2's own
+   `kernel8.img` would have gone. `tools/rpi4-install.sh --direct
+   /path/to/boot` goes back to booting o2 directly.
+3. The serial console is the same as o2's (GPIO 14/15, 115200 8N1). h2
+   prints its lines first, then o2 its boot messages and the shell.
 
 This has been run on qemu's raspi4b only, not yet on a board.
 
