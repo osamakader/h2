@@ -6,12 +6,15 @@ char hv_cpu_stacks[HV_MAX_CPUS][HV_STACK_SIZE] __attribute__((aligned(16)));
 
 static struct hv_lock slots_lock;
 
+/* -1 on a CPU that isn't on a slot's stack (a fault before it got one) */
 int hv_cpu_index(void)
 {
 	char here;
+	hv_addr_t sp = (hv_addr_t)&here, base = (hv_addr_t)hv_cpu_stacks;
 
-	return (int)(((hv_addr_t)&here - (hv_addr_t)hv_cpu_stacks) /
-		     HV_STACK_SIZE);
+	if (sp < base || sp >= base + sizeof(hv_cpu_stacks))
+		return -1;
+	return (int)((sp - base) / HV_STACK_SIZE);
 }
 
 void hv_cpu_boot(hv_addr_t hwid)
@@ -53,10 +56,14 @@ void hv_cpu_release(int slot)
 	hv_unlock(&slots_lock);
 }
 
+/* not for a CPU without a slot: that one goes ahead, to report a fault */
 void hv_lock(struct hv_lock *lock)
 {
 	int me = hv_cpu_index(), j;
 	uint32_t max = 0;
+
+	if (me < 0)
+		return;
 
 	lock->choosing[me] = 1;
 	hv_mb();
@@ -81,6 +88,9 @@ void hv_lock(struct hv_lock *lock)
 
 void hv_unlock(struct hv_lock *lock)
 {
+	int me = hv_cpu_index();
+
 	hv_mb();
-	lock->number[hv_cpu_index()] = 0;
+	if (me >= 0)
+		lock->number[me] = 0;
 }
