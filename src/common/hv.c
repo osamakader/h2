@@ -3,6 +3,8 @@
 #include <hv/hv.h>
 
 #define HV_PAGE_SIZE	0x1000UL
+#define HV_PAGE_UP(a)	(((a) + HV_PAGE_SIZE - 1) & ~(HV_PAGE_SIZE - 1))
+#define FDT_RSV_ENTRY	16
 
 extern char __image_start[], __image_end[];
 
@@ -13,8 +15,8 @@ extern char __image_start[], __image_end[];
 hv_addr_t hv_main(hv_addr_t dtb)
 {
 	hv_addr_t start = (hv_addr_t)__image_start;
-	hv_addr_t end = ((hv_addr_t)__image_end + HV_PAGE_SIZE - 1) &
-			~(HV_PAGE_SIZE - 1);
+	hv_addr_t end = HV_PAGE_UP((hv_addr_t)__image_end);
+	hv_addr_t size, copy, copy_size;
 
 	hv_console_write("h2: hypervisor online\n");
 
@@ -25,17 +27,43 @@ hv_addr_t hv_main(hv_addr_t dtb)
 
 	hv_console_write("h2: device tree at ");
 	hv_console_hex(dtb);
-	if (fdt_add_memreserve((void *)dtb, start, end - start) < 0) {
-		hv_console_write(", no room in it to reserve h2\n");
-	} else {
-		hv_console_write(", h2 reserved ");
+	hv_console_putchar('\n');
+
+	size = fdt_size((void *)dtb);
+	if (dtb < end && start < dtb + size)
+		hv_console_write("h2: the device tree is inside h2's memory\n");
+
+	if (fdt_add_memreserve((void *)dtb, start, end - start) == 0) {
+		hv_console_write("h2: reserved ");
 		hv_console_hex(start);
 		hv_console_putchar('-');
 		hv_console_hex(end);
-		hv_console_putchar('\n');
+		hv_console_write(" in it\n");
+		return dtb;
 	}
 
-	return dtb;
+	/*
+	 * No room in it for the reservation (the firmware packed it): move
+	 * it right past h2, or past itself if it is there, with room for
+	 * two, and reserve the copy too.
+	 */
+	copy_size = HV_PAGE_UP(fdt_used((void *)dtb) + 2 * FDT_RSV_ENTRY);
+	copy = end;
+	if (copy < dtb + size && dtb < copy + copy_size)
+		copy = HV_PAGE_UP(dtb + size);
+	fdt_move((void *)dtb, (void *)copy, (uint32_t)copy_size);
+	fdt_add_memreserve((void *)copy, start, end - start);
+	fdt_add_memreserve((void *)copy, copy, copy_size);
+
+	hv_console_write("h2: no room in it to reserve h2: moved it to ");
+	hv_console_hex(copy);
+	hv_console_write(", reserved ");
+	hv_console_hex(start);
+	hv_console_putchar('-');
+	hv_console_hex(end);
+	hv_console_write(" and itself\n");
+
+	return copy;
 }
 
 struct hv_hcall_ret hv_hypercall(hv_addr_t nr, hv_addr_t arg0)

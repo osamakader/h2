@@ -60,6 +60,12 @@ uint32_t fdt_size(const void *fdt)
 	return get32(fdt, FDT_TOTALSIZE);
 }
 
+/* the bytes it uses: up to the end of the strings block, the last one */
+uint32_t fdt_used(const void *fdt)
+{
+	return get32(fdt, FDT_OFF_DT_STRINGS) + get32(fdt, FDT_SIZE_DT_STRINGS);
+}
+
 /*
  * Add a /memreserve/ entry. The entries come right before the structure
  * block, so everything from the terminating entry to the end of the
@@ -97,4 +103,24 @@ int fdt_add_memreserve(void *fdt, uint64_t addr, uint64_t size)
 	put32(fdt, FDT_OFF_DT_STRINGS, strings + FDT_RSV_ENTRY_SIZE);
 
 	return 0;
+}
+
+/*
+ * Copy the blob's used bytes (fdt_used()) to to, as a blob of size bytes:
+ * the rest is free space at the end, for fdt_add_memreserve(). The two
+ * may overlap.
+ */
+void fdt_move(const void *fdt, void *to, uint32_t size)
+{
+	const volatile uint8_t *src = fdt;
+	volatile uint8_t *dst = to;
+	uint32_t i, n = fdt_used(fdt);
+
+	if (dst < src)
+		for (i = 0; i < n; i++)
+			dst[i] = src[i];
+	else
+		for (i = n; i > 0; i--)
+			dst[i - 1] = src[i - 1];
+	put32(to, FDT_TOTALSIZE, size);
 }
