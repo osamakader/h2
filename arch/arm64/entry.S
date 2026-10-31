@@ -1,6 +1,23 @@
 #include <arch/platform.h>
 #include <hv/config.h>
 
+/*
+ * EL2's own controls, not whatever the firmware left: MMU, D-cache and
+ * alignment checks off, the I-cache on (invalidated first). SCTLR_EL2's
+ * RES1 bits are 29, 28, 23, 22, 18, 16, 11, 5 and 4.
+ */
+#define SCTLR_EL2_RES1	0x30c50830
+#define SCTLR_EL2_I	(1 << 12)
+
+.macro el2_controls
+	ic iallu
+	dsb nsh
+	isb
+	ldr x9, =(SCTLR_EL2_RES1 | SCTLR_EL2_I)
+	msr sctlr_el2, x9
+	isb
+.endm
+
 .section .text.boot, "ax"
 .global _start
 .type _start, %function
@@ -19,6 +36,12 @@ _start:
 	.ascii "ARM\x64"		/* magic */
 	.long 0
 1:
+	/* only in EL2: elsewhere arm64_boot() says so and stops */
+	mrs x9, CurrentEL
+	cmp x9, #(2 << 2)
+	b.ne 2f
+	el2_controls
+2:
 	/* x0: the DTB, from a boot loader that starts us like Linux */
 	ldr x1, =hv_cpu_stacks		/* slot 0's stack */
 	mov x2, #HV_STACK_SIZE
@@ -37,6 +60,7 @@ _start:
 .global arm64_secondary_entry
 .type arm64_secondary_entry, %function
 arm64_secondary_entry:
+	el2_controls
 	ldr x1, =hv_cpu_stacks
 	add x2, x0, #1
 	mov x3, #HV_STACK_SIZE
@@ -56,6 +80,7 @@ arm64_secondary_entry:
 .global arm64_spin_entry
 .type arm64_spin_entry, %function
 arm64_spin_entry:
+	el2_controls
 	mrs x0, mpidr_el1
 	and x0, x0, #(PLATFORM_SPIN_CPUS - 1)
 	ldr x1, =arm64_spin_slot
