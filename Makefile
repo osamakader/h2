@@ -26,7 +26,9 @@ RUN_NEEDS = $(DTB)
 else
 $(error Unsupported PLATFORM=$(PLATFORM). Use virt or rpi4)
 endif
-ARCH_CFLAGS := -mgeneral-regs-only -DPLATFORM_$(PLATFORM)
+# h2 runs with its MMU off, where all memory is Device memory and an
+# unaligned access faults: the compiler mustn't make any
+ARCH_CFLAGS := -mgeneral-regs-only -mstrict-align -DPLATFORM_$(PLATFORM)
 ARCH_LDFLAGS := --defsym=H2_LOAD_ADDR=$(LOAD_ADDR)
 ARCH_OBJS := entry.o boot.o vectors.o trap.o psci.o stage2.o console.o guest.o \
 	$(ARCH_PLATFORM_OBJS)
