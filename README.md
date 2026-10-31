@@ -90,5 +90,6 @@ On a real Pi 4, starting from o2's SD card (o2's README: `tools/rpi4-card.sh`):
 3. The serial console is the same as o2's (GPIO 14/15, 115200 8N1). h2
    prints its lines first, then o2 its boot messages and the shell.
 
-This has been run on qemu's raspi4b only, not yet on a board.
+It boots o2 to its shell on a Raspberry Pi 4 Model B (and on qemu's
+raspi4b, where usertests -q passes).
 
