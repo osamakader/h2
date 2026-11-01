@@ -1,9 +1,10 @@
 #ifndef ARCH_RISCV64_BOOT_H
 #define ARCH_RISCV64_BOOT_H
 
-__attribute__((noreturn))
-void riscv64_enter_guest(unsigned long entry, unsigned long stack,
-			 unsigned long host_stack, unsigned long arg0,
-			 unsigned long arg1);
+#include <hv/types.h>
+
+void riscv64_hart_init(void);
+void riscv64_run_guest(int slot, hv_addr_t entry, hv_addr_t arg0,
+		       hv_addr_t arg1);
 
 #endif

@@ -4,6 +4,7 @@
 #include <hv/cpu.h>
 #include <hv/hv.h>
 #include <hv/stage2.h>
+#include <hv/vcpu.h>
 
 extern char __arm64_vectors[];
 extern char __guest_stack_top[];
@@ -60,42 +61,10 @@ void arm64_el2_init(void)
 	__asm__ volatile("isb" ::: "memory");
 }
 
-/* Enter EL1h at entry, MMU off, interrupts masked, with x0 = arg. */
-void arm64_enter_guest(unsigned long entry, unsigned long stack,
-		       unsigned long arg)
-{
-	const unsigned long spsr_el1h = 0x5;
-	const unsigned long daif_mask = 0xfUL << 6;
-	const unsigned long sctlr_el1_res1 = (1UL << 29) | (1UL << 28) |
-					     (1UL << 23) | (1UL << 22) |
-					     (1UL << 20) | (1UL << 11);
-	register unsigned long x0 __asm__("x0") = arg;
-
-	__asm__ volatile(
-		"msr SCTLR_EL1, %[sctlr]\n"
-		"msr CPACR_EL1, xzr\n"
-		"msr TTBR0_EL1, xzr\n"
-		"msr TTBR1_EL1, xzr\n"
-		"msr TCR_EL1, xzr\n"
-		"msr MAIR_EL1, xzr\n"
-		"msr SP_EL1, %[stack]\n"
-		"msr ELR_EL2, %[entry]\n"
-		"msr SPSR_EL2, %[spsr]\n"
-		"isb\n"
-		"eret\n"
-		:
-		: [sctlr] "r"(sctlr_el1_res1),
-		  [stack] "r"(stack),
-		  [entry] "r"(entry),
-		  [spsr] "r"(spsr_el1h | daif_mask),
-		  "r"(x0)
-		: "memory");
-	__builtin_unreachable();
-}
-
 void arm64_boot(unsigned long dtb)
 {
 	hv_addr_t entry, mpidr;
+	struct hv_vcpu *vcpu = 0;
 	int loaded;
 
 	if (read_current_el() != 2) {
@@ -131,16 +100,28 @@ void arm64_boot(unsigned long dtb)
 		arm64_spin_take(mpidr);
 #endif
 
-	switch (loaded) {
-	case 1:
+	if (loaded == 1) {
 		/* the guest's code went out through the data side */
 		__asm__ volatile("dsb sy; ic iallu; dsb sy; isb" ::: "memory");
-		arm64_enter_guest(entry, 0, dtb);
-	case 0:
-		arm64_enter_guest((unsigned long)arm64_guest_entry,
-				  (unsigned long)__guest_stack_top, dtb);
-	default:
-		for (;;)
-			__asm__ volatile("wfe");
+		vcpu = hv_vcpu_new(0, entry, 0, dtb, 0);
+	} else if (loaded == 0) {
+		vcpu = hv_vcpu_new(0, (hv_addr_t)arm64_guest_entry,
+				   (hv_addr_t)__guest_stack_top, dtb, 0);
 	}
+	if (vcpu)
+		hv_vcpu_run(vcpu);
+	for (;;)
+		__asm__ volatile("wfe");
+}
+
+/* a CPU the guest started, on h2 slot slot: on to the guest, for good */
+void arm64_run_guest(int slot, unsigned long entry, unsigned long arg)
+{
+	struct hv_vcpu *vcpu = hv_vcpu_new(slot, entry, 0, arg, 0);
+
+	if (vcpu)
+		hv_vcpu_run(vcpu);
+	hv_console_write("h2: no room for another vCPU\n");
+	for (;;)
+		__asm__ volatile("wfe");
 }

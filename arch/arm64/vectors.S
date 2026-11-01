@@ -62,6 +62,8 @@ arm64_sync_lower_aarch64:
 	mov x0, sp
 	bl arm64_handle_trap
 
+.global arm64_trap_return
+arm64_trap_return:
 	ldr x2, [sp, #248]
 	ldr x3, [sp, #256]
 	msr ELR_EL2, x2
@@ -85,6 +87,22 @@ arm64_sync_lower_aarch64:
 	ldr x30, [sp, #240]
 	add sp, sp, #288
 	eret
+
+/*
+ * Enter a vCPU from its frame (x0) the way a trap returns: copied to the
+ * top of this CPU's h2 stack (x1), where the next trap's frame goes.
+ */
+.global arch_vcpu_enter
+.type arch_vcpu_enter, %function
+arch_vcpu_enter:
+	sub sp, x1, #288
+	mov x2, #0
+1:	ldr x3, [x0, x2]
+	str x3, [sp, x2]
+	add x2, x2, #8
+	cmp x2, #280
+	b.lo 1b
+	b arm64_trap_return
 
 .global arm64_unhandled_exception
 .type arm64_unhandled_exception, %function

@@ -4,5 +4,6 @@
 /* constants shared with assembly */
 #define HV_MAX_CPUS	8
 #define HV_STACK_SIZE	0x4000
+#define HV_MAX_VCPUS	16
 
 #endif

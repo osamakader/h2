@@ -94,9 +94,8 @@ void riscv64_sbi_set_timer(hv_addr_t stime)
 
 void riscv64_secondary_boot(unsigned long hartid, unsigned long slot)
 {
-	riscv64_enter_guest(hv_cpus[slot].guest_entry, 0,
-			    HV_CPU_STACK_TOP(slot), hartid,
-			    hv_cpus[slot].guest_arg);
+	riscv64_run_guest((int)slot, hv_cpus[slot].guest_entry, hartid,
+			  hv_cpus[slot].guest_arg);
 }
 
 /* calls whose entry point h2 would have to wrap: not yet */

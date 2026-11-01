@@ -77,5 +77,5 @@ void arm64_spin_park(unsigned long n)
 
 	while (!(entry = *word))
 		__asm__ volatile("wfe");
-	arm64_enter_guest(entry, 0, 0);
+	arm64_run_guest(arm64_spin_slot[n], entry, 0);
 }

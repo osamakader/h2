@@ -30,7 +30,7 @@ endif
 # unaligned access faults: the compiler mustn't make any
 ARCH_CFLAGS := -mgeneral-regs-only -mstrict-align -DPLATFORM_$(PLATFORM)
 ARCH_LDFLAGS := --defsym=H2_LOAD_ADDR=$(LOAD_ADDR)
-ARCH_OBJS := entry.o boot.o vectors.o trap.o psci.o stage2.o console.o guest.o \
+ARCH_OBJS := entry.o boot.o vectors.o trap.o psci.o stage2.o vcpu.o console.o guest.o \
 	$(ARCH_PLATFORM_OBJS)
 QEMU := qemu-system-aarch64
 # PCI config space (ECAM) low, where a guest like o2 reaches it
@@ -41,7 +41,7 @@ CROSS_COMPILE ?= riscv64-linux-gnu-
 ARCH_DIR := arch/riscv64
 ARCH_CFLAGS := -march=rv64imach_zicsr_zifencei -mabi=lp64 -mcmodel=medany
 ARCH_LDFLAGS :=
-ARCH_OBJS := entry.o boot.o trap_entry.o trap.o sbi.o virq.o vplic.o stage2.o console.o guest.o
+ARCH_OBJS := entry.o boot.o trap_entry.o trap.o sbi.o virq.o vplic.o stage2.o vcpu.o console.o guest.o
 QEMU := qemu-system-riscv64
 QEMU_MACHINE := -machine virt -cpu rv64,h=true -bios default
 else
@@ -55,9 +55,10 @@ OBJCOPY := $(CROSS_COMPILE)objcopy
 COMMON_CFLAGS := \
 	-std=c11 -ffreestanding -fno-builtin -fno-stack-protector \
 	-fno-pic -fno-pie -Wall -Wextra -Werror -O2 -MMD -MP \
+	-fno-tree-loop-distribute-patterns \
 	-Iinclude -I$(ARCH_DIR)/include
 
-COMMON_OBJS := hv.o cpu.o fdt.o elf.o stage2.o guest_image.o
+COMMON_OBJS := hv.o cpu.o vcpu.o fdt.o elf.o stage2.o guest_image.o
 
 # the guest: an ELF file to embed and load (default: the built-in guest)
 GUEST ?=

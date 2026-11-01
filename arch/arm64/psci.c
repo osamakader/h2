@@ -63,8 +63,8 @@ static hv_addr_t cpu_on(hv_addr_t fid, hv_addr_t mpidr, hv_addr_t entry,
 void arm64_secondary_boot(unsigned long slot)
 {
 	arm64_el2_init();
-	arm64_enter_guest(hv_cpus[slot].guest_entry, 0,
-			  hv_cpus[slot].guest_arg);
+	arm64_run_guest((int)slot, hv_cpus[slot].guest_entry,
+			hv_cpus[slot].guest_arg);
 }
 
 /* calls whose entry point h2 would have to wrap: not yet */

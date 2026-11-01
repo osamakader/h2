@@ -1,19 +1,18 @@
 #include <arch/boot.h>
+#include <arch/csr.h>
 #include <arch/stage2.h>
 #include <arch/virq.h>
 #include <arch/vplic.h>
 #include <hv/cpu.h>
 #include <hv/hv.h>
 #include <hv/stage2.h>
+#include <hv/vcpu.h>
 
 extern char __riscv64_trap_vector[];
 extern char __guest_stack_top[];
 extern char __image_start[], __image_end[];
 extern void riscv64_guest_entry(void);
 
-#define HSTATUS_SPV	(1UL << 7)
-#define HSTATUS_SPVP	(1UL << 8)
-#define SSTATUS_SPP	(1UL << 8)
 #define HCOUNTEREN_CY_TM_IR	0x7UL	/* cycle, time, instret */
 
 /*
@@ -26,55 +25,37 @@ extern void riscv64_guest_entry(void);
 			 (1UL << 8) | (1UL << 12) | (1UL << 13) | (1UL << 15))
 
 /*
- * Enter VS-mode at entry with a0, a1 = arg0, arg1; the guest may read the
- * cycle, time and instret counters, gets its exceptions and interrupts,
- * and sees memory through stage 2. While the guest runs, sscratch holds
- * h2's stack on this hart, for the trap vector.
+ * This hart, before it runs vCPUs: they may read the cycle, time and
+ * instret counters, get their exceptions and interrupts, and see memory
+ * through stage 2; h2 takes the traps.
  */
-void riscv64_enter_guest(unsigned long entry, unsigned long stack,
-			 unsigned long host_stack, unsigned long arg0,
-			 unsigned long arg1)
+void riscv64_hart_init(void)
 {
 	riscv64_virq_init();
 	riscv64_stage2_enable();
+	csr_write(stvec, (hv_addr_t)__riscv64_trap_vector);
+	csr_write(hcounteren, HCOUNTEREN_CY_TM_IR);
+	csr_write(hedeleg, HEDELEG_GUEST);
+}
 
-	/* bound to a0/a1 only after the call, which may clobber them */
-	register unsigned long a0 __asm__("a0") = arg0;
-	register unsigned long a1 __asm__("a1") = arg1;
+/* a hart the guest started, on h2 slot slot: on to the guest, for good */
+void riscv64_run_guest(int slot, hv_addr_t entry, hv_addr_t arg0,
+		       hv_addr_t arg1)
+{
+	struct hv_vcpu *vcpu;
 
-	__asm__ volatile(
-		"csrw stvec, %[trap]\n"
-		"csrw vsatp, zero\n"
-		"csrw hcounteren, %[counters]\n"
-		"csrw hedeleg, %[exceptions]\n"
-		"csrw sepc, %[entry]\n"
-		"csrw sscratch, %[host_stack]\n"
-		"csrr t0, hstatus\n"
-		"ori t0, t0, %[spv]\n"
-		"ori t0, t0, %[spvp]\n"
-		"csrw hstatus, t0\n"
-		"csrr t0, sstatus\n"
-		"ori t0, t0, %[spp]\n"
-		"csrw sstatus, t0\n"
-		"mv sp, %[stack]\n"
-		"sret\n"
-		:
-		: [trap] "r"(__riscv64_trap_vector),
-		  [entry] "r"(entry),
-		  [stack] "r"(stack),
-		  [host_stack] "r"(host_stack),
-		  [spv] "i"(HSTATUS_SPV),
-		  [spvp] "i"(HSTATUS_SPVP),
-		  [spp] "i"(SSTATUS_SPP),
-		  [counters] "r"(HCOUNTEREN_CY_TM_IR),
-		  [exceptions] "r"(HEDELEG_GUEST),
-		  "r"(a0), "r"(a1)
-		: "t0", "memory");
-	__builtin_unreachable();
+	riscv64_hart_init();
+	vcpu = hv_vcpu_new(slot, entry, 0, arg0, arg1);
+	if (vcpu)
+		hv_vcpu_run(vcpu);
+	hv_console_write("h2: no room for another vCPU\n");
+	for (;;)
+		__asm__ volatile("wfi");
 }
 
 void riscv64_boot(unsigned long hartid, unsigned long dtb)
 {
+	struct hv_vcpu *vcpu;
 	hv_addr_t entry;
 	int loaded;
 
@@ -95,17 +76,16 @@ void riscv64_boot(unsigned long hartid, unsigned long dtb)
 	if (loaded >= 0 && riscv64_stage2_init() < 0)
 		loaded = -1;
 
-	switch (loaded) {
-	case 1:
+	if (loaded == 1) {
 		__asm__ volatile("fence.i" ::: "memory");
-		riscv64_enter_guest(entry, 0, HV_CPU_STACK_TOP(0),
-				    hartid, dtb);
-	case 0:
-		riscv64_enter_guest((unsigned long)riscv64_guest_entry,
-				    (unsigned long)__guest_stack_top,
-				    HV_CPU_STACK_TOP(0), hartid, dtb);
-	default:
-		for (;;)
-			__asm__ volatile("wfi");
+		riscv64_run_guest(0, entry, hartid, dtb);
+	} else if (loaded == 0) {
+		riscv64_hart_init();
+		vcpu = hv_vcpu_new(0, (hv_addr_t)riscv64_guest_entry,
+				   (hv_addr_t)__guest_stack_top, hartid, dtb);
+		if (vcpu)
+			hv_vcpu_run(vcpu);
 	}
+	for (;;)
+		__asm__ volatile("wfi");
 }

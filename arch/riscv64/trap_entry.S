@@ -70,6 +70,8 @@ __riscv64_trap_vector:
 	mv a0, sp
 	call riscv64_handle_trap
 
+.global __riscv64_trap_return
+__riscv64_trap_return:
 	ld t0, FRAME_PC(sp)
 	ld t1, FRAME_STATUS(sp)
 	ld t2, REG(2)(sp)
@@ -110,3 +112,20 @@ __riscv64_trap_vector:
 	addi sp, sp, FRAME_SIZE
 	csrrw sp, sscratch, sp
 	sret
+
+/*
+ * Enter a vCPU from its frame (a0) the way a trap returns: copied to the
+ * top of this hart's h2 stack (a1), where the next trap's frame goes.
+ */
+.global arch_vcpu_enter
+arch_vcpu_enter:
+	addi sp, a1, -FRAME_SIZE
+	li t0, 0
+	li t3, FRAME_SIZE - 8
+1:	add t1, a0, t0
+	ld t2, 0(t1)
+	add t1, sp, t0
+	sd t2, 0(t1)
+	addi t0, t0, 8
+	blt t0, t3, 1b
+	j __riscv64_trap_return

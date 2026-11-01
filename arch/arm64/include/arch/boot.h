@@ -6,8 +6,6 @@
 
 void arm64_el2_init(void);
 void arm64_spin_take(unsigned long boot_mpidr);
-__attribute__((noreturn))
-void arm64_enter_guest(unsigned long entry, unsigned long stack,
-		       unsigned long arg);
+void arm64_run_guest(int slot, unsigned long entry, unsigned long arg);
 
 #endif
