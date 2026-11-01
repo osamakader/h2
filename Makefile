@@ -33,7 +33,9 @@ ARCH_LDFLAGS := --defsym=H2_LOAD_ADDR=$(LOAD_ADDR)
 ARCH_OBJS := entry.o boot.o vectors.o trap.o psci.o stage2.o console.o guest.o \
 	$(ARCH_PLATFORM_OBJS)
 QEMU := qemu-system-aarch64
-QEMU_MACHINE := -machine virt,virtualization=on,gic-version=3 -cpu cortex-a57
+# PCI config space (ECAM) low, where a guest like o2 reaches it
+QEMU_MACHINE := -machine virt,virtualization=on,gic-version=3,highmem-ecam=off \
+	-cpu cortex-a57
 else ifeq ($(ARCH),riscv64)
 CROSS_COMPILE ?= riscv64-linux-gnu-
 ARCH_DIR := arch/riscv64
@@ -137,10 +139,16 @@ O2_QEMU_ARGS := -global virtio-mmio.force-legacy=false \
 	-device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0 \
 	-netdev user,id=net0 -device virtio-net-device,netdev=net0,bus=virtio-mmio-bus.1
 ifeq ($(GPU),1)
-# o2's screen, keyboard and pointer (the host's, absolute)
-O2_QEMU_ARGS += -device virtio-gpu-device,bus=virtio-mmio-bus.2 \
-	-device virtio-keyboard-device,bus=virtio-mmio-bus.3 \
+# o2's screen, and its keyboard and pointer: the host's (absolute), or
+# with USB=1 a USB keyboard and mouse behind a hub, as on the Pi 4
+O2_QEMU_ARGS += -device virtio-gpu-device,bus=virtio-mmio-bus.2
+ifeq ($(USB),1)
+O2_QEMU_ARGS += -device qemu-xhci,id=xhci -device usb-hub,bus=xhci.0,port=1 \
+	-device usb-kbd,bus=xhci.0,port=1.1 -device usb-mouse,bus=xhci.0,port=1.2
+else
+O2_QEMU_ARGS += -device virtio-keyboard-device,bus=virtio-mmio-bus.3 \
 	-device virtio-tablet-device,bus=virtio-mmio-bus.4
+endif
 endif
 endif
 
