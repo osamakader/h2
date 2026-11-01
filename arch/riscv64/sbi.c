@@ -130,7 +130,7 @@ void riscv64_sbi_call(struct hv_trap_frame *frame)
 
 	if ((ext == SBI_EXT_TIME && fid == SBI_TIME_SET_TIMER) ||
 	    ext == SBI_EXT_LEGACY_SET_TIMER)
-		riscv64_guest_set_timer();
+		riscv64_guest_set_timer(a[0]);
 
 	/*
 	 * A remote sfence.vma from M-mode flushes the harts' HS-level

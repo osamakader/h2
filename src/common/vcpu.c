@@ -59,3 +59,9 @@ void hv_vcpu_run(struct hv_vcpu *vcpu)
 	arch_vcpu_load(vcpu);
 	arch_vcpu_enter(&vcpu->frame, HV_CPU_STACK_TOP(vcpu->cpu));
 }
+
+/* the vCPU this CPU runs: from a trap, the one that trapped */
+struct hv_vcpu *hv_vcpu_current(void)
+{
+	return current[hv_cpu_index()];
+}

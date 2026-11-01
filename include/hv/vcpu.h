@@ -21,6 +21,7 @@ struct hv_vcpu {
 struct hv_vcpu *hv_vcpu_new(int cpu, hv_addr_t entry, hv_addr_t stack,
 			    hv_addr_t arg0, hv_addr_t arg1);
 __attribute__((noreturn)) void hv_vcpu_run(struct hv_vcpu *vcpu);
+struct hv_vcpu *hv_vcpu_current(void);
 
 /* the architecture's part */
 void arch_vcpu_init(struct hv_vcpu *vcpu, hv_addr_t entry, hv_addr_t stack,

@@ -2,6 +2,7 @@
 #include <arch/sbi.h>
 #include <arch/virq.h>
 #include <arch/vplic.h>
+#include <hv/vcpu.h>
 
 /*
  * Interrupts for the guest. The VS-level ones are delegated to it
@@ -23,18 +24,20 @@ void riscv64_virq_init(void)
 }
 
 /*
- * The timer the guest set with SBI set_timer went off: disarm it and
- * pass it on. It stays pending for the guest until its next set_timer.
+ * The timer the running vCPU set with SBI set_timer went off: disarm it
+ * and pass it on. It stays pending for the vCPU until its next set_timer.
  */
 void riscv64_timer_interrupt(void)
 {
 	riscv64_sbi_set_timer(~0UL);
+	hv_vcpu_current()->arch.stime = ~0UL;
 	csr_set(hvip, 1UL << IRQ_VS_TIMER);
 }
 
-/* the guest is setting its timer: SBI clears the pending one */
-void riscv64_guest_set_timer(void)
+/* the running vCPU sets its timer: SBI clears the pending one */
+void riscv64_guest_set_timer(hv_addr_t stime)
 {
+	hv_vcpu_current()->arch.stime = stime;
 	csr_clear(hvip, 1UL << IRQ_VS_TIMER);
 }
 
