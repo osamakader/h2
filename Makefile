@@ -30,7 +30,8 @@ endif
 # unaligned access faults: the compiler mustn't make any
 ARCH_CFLAGS := -mgeneral-regs-only -mstrict-align -DPLATFORM_$(PLATFORM)
 ARCH_LDFLAGS := --defsym=H2_LOAD_ADDR=$(LOAD_ADDR)
-ARCH_OBJS := entry.o boot.o vectors.o trap.o psci.o stage2.o vcpu.o console.o guest.o \
+ARCH_OBJS := entry.o boot.o vectors.o trap.o psci.o stage2.o vcpu.o fpsimd.o \
+	console.o guest.o \
 	$(ARCH_PLATFORM_OBJS)
 QEMU := qemu-system-aarch64
 # PCI config space (ECAM) low, where a guest like o2 reaches it
