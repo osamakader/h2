@@ -44,6 +44,9 @@ struct arch_vcpu {
 	struct arm64_fpsimd fpsimd;
 };
 
+/* a vCPU the guest starts gets arg as from PSCI CPU_ON: in x0 */
+#define ARCH_VCPU_START_ARGS(hwid, arg)	(arg), 0
+
 void arm64_fpsimd_save(struct arm64_fpsimd *fpsimd);
 void arm64_fpsimd_load(const struct arm64_fpsimd *fpsimd);
 

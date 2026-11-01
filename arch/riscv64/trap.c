@@ -4,6 +4,7 @@
 #include <arch/virq.h>
 #include <arch/vplic.h>
 #include <hv/hv.h>
+#include <hv/vcpu.h>
 
 void riscv64_handle_trap(struct hv_trap_frame *frame)
 {
@@ -44,6 +45,8 @@ void riscv64_handle_trap(struct hv_trap_frame *frame)
 		for (;;)
 			__asm__ volatile("wfi");
 	}
+
+	hv_vcpu_trap_done(frame);
 }
 
 /* A trap in h2 itself, from the trap vector: report it and stop. */

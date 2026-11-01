@@ -1,6 +1,7 @@
 #include <arch/psci.h>
 #include <arch/trap.h>
 #include <hv/hv.h>
+#include <hv/vcpu.h>
 
 static void smccc_call(struct hv_trap_frame *frame)
 {
@@ -9,8 +10,10 @@ static void smccc_call(struct hv_trap_frame *frame)
 
 	switch (SMCCC_OWNER(fid)) {
 	case SMCCC_OWNER_VENDOR_HYP:
-		ret = hv_hypercall(SMCCC_NUMBER(fid), frame->regs[1]);
-		frame->regs[0] = ret.error ? (hv_addr_t)SMCCC_RET_NOT_SUPPORTED : 0;
+		ret = hv_hypercall(SMCCC_NUMBER(fid), frame->regs[1],
+				   frame->regs[2]);
+		/* HV_ENOSYS is SMCCC's NOT_SUPPORTED */
+		frame->regs[0] = (hv_addr_t)(long)ret.error;
 		frame->regs[1] = ret.value;
 		break;
 	case SMCCC_OWNER_STANDARD:
@@ -52,6 +55,8 @@ void arm64_handle_trap(struct hv_trap_frame *frame)
 		for (;;)
 			__asm__ volatile("wfe");
 	}
+
+	hv_vcpu_trap_done(frame);
 }
 
 /*

@@ -10,12 +10,16 @@
  * riscv64; the number is the call's function number there.
  */
 enum hv_hypercall {
-	HV_HCALL_PUTC = 1,
+	HV_HCALL_PUTC = 1,		/* (char) */
+	HV_HCALL_YIELD = 2,		/* to the next vCPU on this CPU */
+	HV_HCALL_VCPU_START = 3,	/* (entry, arg): a vCPU on this CPU, */
+					/* arg as from PSCI / SBI HSM */
 };
 
 enum hv_error {
 	HV_OK = 0,
-	HV_ENOSYS = -1,
+	HV_ENOSYS = -1,			/* no such call */
+	HV_ENOMEM = -2,			/* no room */
 };
 
 struct hv_hcall_ret {
@@ -33,7 +37,7 @@ struct hv_trap_frame {
 
 hv_addr_t hv_main(hv_addr_t dtb);
 int hv_load_guest(hv_addr_t dtb, hv_addr_t *entry);
-struct hv_hcall_ret hv_hypercall(hv_addr_t nr, hv_addr_t arg0);
+struct hv_hcall_ret hv_hypercall(hv_addr_t nr, hv_addr_t arg0, hv_addr_t arg1);
 void hv_console_putchar(char ch);
 void hv_console_lock(void);
 void hv_console_unlock(void);

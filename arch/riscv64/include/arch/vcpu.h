@@ -24,6 +24,9 @@ struct arch_vcpu {
 	struct riscv64_fp fp;
 };
 
+/* a vCPU the guest starts gets arg as from SBI hart_start: a0 hartid, a1 */
+#define ARCH_VCPU_START_ARGS(hwid, arg)	(hwid), (arg)
+
 void riscv64_fp_save(struct riscv64_fp *fp);
 void riscv64_fp_load(const struct riscv64_fp *fp);
 

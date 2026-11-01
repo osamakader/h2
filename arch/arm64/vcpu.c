@@ -104,3 +104,8 @@ void arch_vcpu_load(struct hv_vcpu *vcpu)
 	arm64_fpsimd_load(&vcpu->arch.fpsimd);
 	__asm__ volatile("isb" ::: "memory");
 }
+
+void arch_vcpu_flush_tlb(void)
+{
+	__asm__ volatile("dsb nshst; tlbi vmalle1; dsb nsh; isb" ::: "memory");
+}

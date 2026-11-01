@@ -117,8 +117,9 @@ void riscv64_sbi_call(struct hv_trap_frame *frame)
 	struct sbiret fw;
 
 	if (ext == HV_SBI_EXT) {
-		ret = hv_hypercall(fid, a[0]);
-		a[0] = ret.error ? (hv_addr_t)SBI_ERR_NOT_SUPPORTED : 0;
+		ret = hv_hypercall(fid, a[0], a[1]);
+		a[0] = ret.error == HV_ENOSYS ? (hv_addr_t)SBI_ERR_NOT_SUPPORTED :
+		       ret.error ? (hv_addr_t)SBI_ERR_FAILED : 0;
 		a[1] = ret.value;
 		return;
 	}

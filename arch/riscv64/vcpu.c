@@ -66,3 +66,8 @@ void arch_vcpu_load(struct hv_vcpu *vcpu)
 	/* sret goes to VS-mode */
 	csr_set(hstatus, HSTATUS_SPV | HSTATUS_SPVP);
 }
+
+void arch_vcpu_flush_tlb(void)
+{
+	__asm__ volatile("hfence.vvma zero, zero" ::: "memory");
+}

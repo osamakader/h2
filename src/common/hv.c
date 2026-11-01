@@ -1,6 +1,7 @@
 #include <hv/cpu.h>
 #include <hv/fdt.h>
 #include <hv/hv.h>
+#include <hv/vcpu.h>
 
 #define HV_PAGE_SIZE	0x1000UL
 #define HV_PAGE_UP(a)	(((a) + HV_PAGE_SIZE - 1) & ~(HV_PAGE_SIZE - 1))
@@ -66,8 +67,10 @@ hv_addr_t hv_main(hv_addr_t dtb)
 	return copy;
 }
 
-struct hv_hcall_ret hv_hypercall(hv_addr_t nr, hv_addr_t arg0)
+struct hv_hcall_ret hv_hypercall(hv_addr_t nr, hv_addr_t arg0, hv_addr_t arg1)
 {
+	struct hv_vcpu *vcpu;
+
 	struct hv_hcall_ret ret = {
 		.error = HV_OK,
 		.value = 0,
@@ -76,6 +79,19 @@ struct hv_hcall_ret hv_hypercall(hv_addr_t nr, hv_addr_t arg0)
 	switch (nr) {
 	case HV_HCALL_PUTC:
 		hv_console_putchar((char)arg0);
+		break;
+	case HV_HCALL_YIELD:
+		hv_vcpu_yield();
+		break;
+	case HV_HCALL_VCPU_START:
+		/* sharing this CPU, and the guest's memory */
+		vcpu = hv_vcpu_new(hv_cpu_index(), arg0, 0,
+				   ARCH_VCPU_START_ARGS(hv_cpus[hv_cpu_index()].hwid,
+							arg1));
+		if (vcpu)
+			ret.value = (hv_addr_t)(vcpu - hv_vcpu_first());
+		else
+			ret.error = HV_ENOMEM;
 		break;
 	default:
 		ret.error = HV_ENOSYS;
