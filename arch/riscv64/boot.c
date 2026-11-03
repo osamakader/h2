@@ -7,12 +7,15 @@
 #include <hv/hv.h>
 #include <hv/stage2.h>
 #include <hv/vcpu.h>
+#include <hv/vuart.h>
 
 extern char __riscv64_trap_vector[];
 extern char __guest_stack_top[];
 extern char __image_start[], __image_end[];
 extern void riscv64_guest_entry(void);
 
+#define QEMU_VIRT_UART0		0x10000000UL
+#define QEMU_VIRT_UART0_IRQ	10		/* its PLIC source */
 #define HCOUNTEREN_CY_TM_IR	0x7UL	/* cycle, time, instret */
 
 /*
@@ -73,6 +76,9 @@ void riscv64_boot(unsigned long hartid, unsigned long dtb)
 		hv_stage2_hole((hv_addr_t)__image_start,
 				    ((hv_addr_t)__image_end + 0xfff) & ~0xfffUL);
 	riscv64_vplic_init();
+	/* the console UART is h2's now; the guest gets a virtual one */
+	if (loaded >= 0)
+		hv_vuart_16550_init(QEMU_VIRT_UART0, QEMU_VIRT_UART0_IRQ);
 	if (loaded >= 0 && riscv64_stage2_init() < 0)
 		loaded = -1;
 
