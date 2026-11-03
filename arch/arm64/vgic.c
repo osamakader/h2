@@ -3,6 +3,7 @@
 #include <arch/vgic.h>
 #include <hv/cpu.h>
 #include <hv/hv.h>
+#include <hv/mmio.h>
 #include <hv/stage2.h>
 #include <hv/vcpu.h>
 
@@ -284,6 +285,74 @@ static int place(uint64_t lr)
 }
 
 /*
+ * Emulated devices' interrupts: level-sensitive, with no physical
+ * interrupt behind them, so software ones that ask for maintenance when
+ * the guest ends them (EOI), when h2 looks at the line again.
+ */
+#define VLINES			4
+#define GICD_IPRIORITYR		0x400
+
+static struct {
+	unsigned int intid;
+	volatile int level;
+} vlines[VLINES];
+static int nvlines;
+
+/* intid pending or active for the running vCPU, or waiting in its queue */
+static int vline_present(struct arm64_vgic *vgic, unsigned int intid)
+{
+	uint64_t lr;
+	int i;
+
+	for (i = 0; i < nr_lrs; i++) {
+		lr = lr_get(i);
+		if ((lr & LR_STATE) && !(lr & LR_HW) && LR_VINTID(lr) == intid)
+			return 1;
+	}
+	for (i = 0; i < vgic->queued; i++)
+		if (LR_VINTID(vgic->queue[i]) == intid)
+			return 1;
+	return 0;
+}
+
+/* the line went down: whatever the guest hasn't taken yet goes */
+static void vline_retract(struct arm64_vgic *vgic, unsigned int intid)
+{
+	uint64_t lr;
+	int i, n = 0;
+
+	for (i = 0; i < nr_lrs; i++) {
+		lr = lr_get(i);
+		if (!(lr & LR_STATE) || (lr & LR_HW) || LR_VINTID(lr) != intid)
+			continue;
+		lr_put(i, (lr & LR_ACTIVE) ? lr & ~LR_PENDING : 0);
+	}
+	for (i = 0; i < vgic->queued; i++)
+		if (LR_VINTID(vgic->queue[i]) != intid)
+			vgic->queue[n++] = vgic->queue[i];
+	vgic->queued = n;
+}
+
+/* lines that are up and the guest doesn't have: into the queue */
+static void vline_resample(struct arm64_vgic *vgic)
+{
+	unsigned int intid;
+	int i;
+
+	for (i = 0; i < nvlines; i++) {
+		intid = vlines[i].intid;
+		if (!vlines[i].level || vline_present(vgic, intid) ||
+		    vgic->queued == ARM64_VGIC_QUEUE)
+			continue;
+		/* the priority the guest gave it in the distributor */
+		vgic->queue[vgic->queued++] = intid | LR_PENDING | LR_EOI |
+			(uint64_t)*(volatile uint8_t *)((hv_addr_t)PLATFORM_GICD +
+				GICD_IPRIORITYR + intid) << LR_PRIO_SHIFT |
+			(gic3 ? LR_GROUP1 : 0);
+	}
+}
+
+/*
  * The queue, into the list registers, as far as it goes: if they run
  * out, h2 wants the underflow maintenance interrupt.
  */
@@ -298,6 +367,7 @@ static void refill(struct arm64_vgic *vgic)
 		if (lr && !(lr & LR_STATE))
 			lr_put(i, 0);
 	}
+	vline_resample(vgic);
 
 	for (i = 0; i < vgic->queued; i++) {
 		r = full ? -1 : place(vgic->queue[i]);
@@ -325,6 +395,32 @@ static void inject(struct arm64_vgic *vgic, uint64_t lr)
 	refill(vgic);
 }
 
+/*
+ * An emulated device's interrupt line (an SPI) goes up or down: to the
+ * vCPU that runs here, as GICv2 / GICv3 would for a level-sensitive one.
+ */
+void hv_virq_line(unsigned int irq, int level)
+{
+	struct arm64_vgic *vgic;
+	int i;
+
+	for (i = 0; i < nvlines && vlines[i].intid != irq; i++)
+		;
+	if (i == nvlines) {
+		if (nvlines == VLINES)
+			return;
+		vlines[nvlines++].intid = irq;
+	}
+	vlines[i].level = level;
+
+	if (!enabled || !hv_vcpu_current())
+		return;
+	vgic = &hv_vcpu_current()->arch.vgic;
+	if (!level)
+		vline_retract(vgic, irq);
+	refill(vgic);
+}
+
 /* a physical IRQ, taken from the guest: on to the running vCPU */
 void arm64_handle_irq(struct hv_trap_frame *frame)
 {
@@ -340,6 +436,9 @@ void arm64_handle_irq(struct hv_trap_frame *frame)
 		if (intid == MAINT_INTID) {
 			deactivate(iar);
 			refill(vgic);
+		} else if (hv_mmio_phys_irq((unsigned int)intid)) {
+			/* an emulated device's real one: h2's */
+			deactivate(iar);
 		} else if (intid < 16 || intid >= LPI_FIRST) {
 			/* edge: h2's part is done; GICv2 says who sent it */
 			deactivate(iar);
