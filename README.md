@@ -42,8 +42,10 @@ enters it in EL1 / VS-mode with the MMU off, as firmware would: on arm64
 with the DTB in x0, on riscv64 with the hartid in a0 and the DTB in a1.
 h2 reserves its own memory in the DTB (`/memreserve/`) and keeps the
 guest out of it with an identity stage 2 translation, forwards PSCI / SBI
-calls to the firmware, and starts the CPUs the guest starts. Devices are
-passed through.
+calls to the firmware, and starts the CPUs the guest starts. Its console
+UART and its disk are h2's: the guest gets emulated ones where they
+were (a PL011 or a 16550, and a virtio-blk whose requests h2 puts on the
+real one); other devices are passed through.
 
 h2 links at 0x40100000 on arm64 and 0x84000000 on riscv64; the guest must
 fit around it.
