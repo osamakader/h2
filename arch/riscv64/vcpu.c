@@ -1,6 +1,7 @@
 #include <arch/csr.h>
 #include <arch/sbi.h>
 #include <arch/trap.h>
+#include <arch/virq.h>
 #include <hv/vcpu.h>
 
 #define HSTATUS_SPV	(1UL << 7)
@@ -26,6 +27,7 @@ void arch_vcpu_init(struct hv_vcpu *vcpu, hv_addr_t entry, hv_addr_t stack,
 	vcpu->arch.vsstatus = csr_read(vsstatus) &
 			       ~(SSTATUS_SIE | SSTATUS_SPIE | SSTATUS_SPP);
 	vcpu->arch.stime = ~0UL;
+	vcpu->arch.vstimecmp = ~0UL;
 }
 
 /* the running vCPU's state, into vcpu; its timer stops */
@@ -43,6 +45,8 @@ void arch_vcpu_save(struct hv_vcpu *vcpu)
 	csr_clear(hvip, VCPU_HVIP);
 	if (vcpu->arch.stime != ~0UL)
 		riscv64_sbi_set_timer(~0UL);
+	if (riscv64_sstc())
+		vcpu->arch.vstimecmp = csr_read(CSR_VSTIMECMP);
 	csr_set(sstatus, SSTATUS_FS);
 	riscv64_fp_save(&vcpu->arch.fp);
 }
@@ -61,6 +65,8 @@ void arch_vcpu_load(struct hv_vcpu *vcpu)
 	/* a deadline already past goes off at once: VSTIP */
 	if (vcpu->arch.stime != ~0UL)
 		riscv64_sbi_set_timer(vcpu->arch.stime);
+	if (riscv64_sstc())
+		csr_write(CSR_VSTIMECMP, vcpu->arch.vstimecmp);
 	csr_set(sstatus, SSTATUS_FS);
 	riscv64_fp_load(&vcpu->arch.fp);
 	/* sret goes to VS-mode */

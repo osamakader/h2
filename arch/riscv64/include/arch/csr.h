@@ -12,6 +12,12 @@
 #define csr_clear(csr, v) \
 	__asm__ volatile("csrc " CSR_STR(csr) ", %0" :: "rK"(v) : "memory")
 
+/* CSRs the assembler may not know by name */
+#define CSR_VSTIMECMP	0x24d		/* Sstc */
+#define CSR_HTIMEDELTA	0x605
+#define CSR_HENVCFG	0x60a
+#define HENVCFG_STCE	(1UL << 63)	/* VS-mode's stimecmp: vstimecmp */
+
 /* interrupt numbers: sip/sie bits and scause codes */
 #define IRQ_S_SOFT	1
 #define IRQ_VS_SOFT	2

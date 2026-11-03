@@ -21,6 +21,7 @@ struct arch_vcpu {
 	uint64_t vsatp;
 	uint64_t hvip;			/* its own: software and timer */
 	uint64_t stime;			/* its SBI set_timer, or ~0 */
+	uint64_t vstimecmp;		/* the same, with Sstc */
 	struct riscv64_fp fp;
 };
 
