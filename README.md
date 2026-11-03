@@ -64,9 +64,16 @@ showing the screen, the console staying in the terminal:
 
 ```sh
 make ARCH=arm64 GPU=1 GUI=1 run-o2
-``` On riscv64 the guest gets its timer,
-IPIs and external interrupts from h2; its PLIC claims and completions trap
-to h2.
+```
+
+Interrupts reach the guest through h2. On arm64 h2 takes the physical
+IRQs and gives them to the guest through the GIC's virtual CPU interface
+(list registers; GICv3, or GICv2 with the guest's GICC shown GICV), so
+each vCPU has its own timer interrupts; the distributor is still the
+guest's. On riscv64 the guest gets its timer, IPIs and external
+interrupts from h2 (hvip); with Sstc its timer is its own comparator
+(`vstimecmp`), set without leaving the guest; its PLIC claims and
+completions trap to h2.
 
 ## Raspberry Pi 4
 
