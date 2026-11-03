@@ -80,18 +80,36 @@ void riscv64_external_sync(void)
 		csr_set(sie, 1UL << IRQ_S_EXT);
 }
 
-/* an emulated device's interrupt line, for this hart */
+/*
+ * An emulated device's interrupt line goes up or down: for the harts
+ * whose contexts enable it, this one or others (h2's IPI).
+ */
 void hv_virq_line(unsigned int irq, int level)
 {
+	uint32_t was;
+	int slot, me = hv_cpu_index();
+
 	if (irq == 0 || irq > 31)
 		return;
 	hv_lock(&vsrc_lock);
+	was = vsrc_level;
 	if (level)
 		vsrc_level |= 1U << irq;
 	else
 		vsrc_level &= ~(1U << irq);
 	hv_unlock(&vsrc_lock);
-	riscv64_external_sync();
+	if (was == vsrc_level)
+		return;
+
+	for (slot = 0; slot < HV_MAX_CPUS; slot++) {
+		if (!hv_cpus[slot].used ||
+		    !(*PLIC_ENABLE0(2 * hv_cpus[slot].hwid + 1) >> irq & 1))
+			continue;
+		if (slot == me)
+			riscv64_external_sync();
+		else
+			riscv64_kick(slot);
+	}
 }
 
 /* a claim: h2's own sources handled first, then the guest's virtual ones */
