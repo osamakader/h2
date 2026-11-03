@@ -478,6 +478,8 @@ void hv_virq_line(unsigned int irq, int level)
 		return;
 	}
 	cpu = route(irq);
+	if (vlines[i].level == level && vlines[i].cpu == cpu)
+		return;
 	vlines[i].cpu = cpu;
 	hv_mb();
 	vlines[i].level = level;
