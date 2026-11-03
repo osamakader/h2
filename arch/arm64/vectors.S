@@ -28,10 +28,8 @@ __arm64_vectors:
 	vector_unhandled 14	/*   FIQ */
 	vector_unhandled 15	/*   SError */
 
-.text
-.global arm64_sync_lower_aarch64
-.type arm64_sync_lower_aarch64, %function
-arm64_sync_lower_aarch64:
+/* the guest's registers into a frame on h2's stack, x0 pointing at it */
+.macro save_frame
 	sub sp, sp, #288
 	stp x0, x1, [sp, #0]
 	stp x2, x3, [sp, #16]
@@ -60,7 +58,15 @@ arm64_sync_lower_aarch64:
 	str x4, [sp, #272]
 
 	mov x0, sp
+.endm
+
+.text
+.global arm64_sync_lower_aarch64
+.type arm64_sync_lower_aarch64, %function
+arm64_sync_lower_aarch64:
+	save_frame
 	bl arm64_handle_trap
+
 
 .global arm64_trap_return
 arm64_trap_return:
