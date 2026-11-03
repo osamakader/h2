@@ -1,4 +1,5 @@
 #include <arch/csr.h>
+#include <arch/mmio.h>
 #include <arch/sbi.h>
 #include <arch/trap.h>
 #include <arch/virq.h>
@@ -25,7 +26,7 @@ void riscv64_handle_trap(struct hv_trap_frame *frame)
 		break;
 	case RISCV_CAUSE_LOAD_GUEST_PAGE_FAULT:
 	case RISCV_CAUSE_STORE_GUEST_PAGE_FAULT:
-		if (riscv64_vplic_access(frame))
+		if (riscv64_mmio_access(frame))
 			break;
 		/* fall through */
 	default:
