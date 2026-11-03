@@ -1,5 +1,6 @@
 #include <arch/psci.h>
 #include <arch/trap.h>
+#include <arch/vgic.h>
 #include <hv/hv.h>
 #include <hv/vcpu.h>
 
@@ -38,6 +39,10 @@ void arm64_handle_trap(struct hv_trap_frame *frame)
 		smccc_call(frame);
 		frame->pc += 4;
 		break;
+	case ARM64_ESR_EC_SYSREG:
+		if (arm64_vgic_sysreg(frame))
+			break;
+		/* fall through */
 	default:
 		hv_console_lock();
 		hv_dump_trap("unhandled arm64 trap", frame);

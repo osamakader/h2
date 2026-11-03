@@ -1,6 +1,7 @@
 #ifndef ARCH_ARM64_VCPU_H
 #define ARCH_ARM64_VCPU_H
 
+#include <arch/vgic.h>
 #include <hv/types.h>
 
 /* FP/SIMD: q0-q31, then FPSR and FPCR (fpsimd.S) */
@@ -41,6 +42,7 @@ struct arch_vcpu {
 	uint64_t cntv_ctl_el0;
 	uint64_t cntv_cval_el0;
 	uint64_t vmpidr_el2;		/* the MPIDR it sees */
+	struct arm64_vgic vgic;
 	struct arm64_fpsimd fpsimd;
 };
 

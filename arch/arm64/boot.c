@@ -1,6 +1,7 @@
 #include <arch/boot.h>
 #include <arch/platform.h>
 #include <arch/stage2.h>
+#include <arch/vgic.h>
 #include <hv/cpu.h>
 #include <hv/hv.h>
 #include <hv/stage2.h>
@@ -14,6 +15,7 @@ extern void arm64_guest_entry(void);
 #define HCR_EL2_RW		(1UL << 31)
 #define HCR_EL2_VM		(1UL << 0)	/* stage 2 */
 #define HCR_EL2_TSC		(1UL << 19)	/* guest SMCs trap to h2 */
+#define HCR_EL2_IMO		(1UL << 4)	/* IRQs to h2, virtual ones to EL1 */
 #define CNTHCTL_EL1PCTEN	(1UL << 0)
 #define CNTHCTL_EL1PCEN		(1UL << 1)
 #define CPTR_EL2_RES1		0x32ffUL	/* RES1 bits; TFP, TTA, TCPAC clear */
@@ -31,7 +33,8 @@ static inline unsigned long read_current_el(void)
 /*
  * Per CPU: EL1 sees memory through stage 2, gets the physical timer and
  * counter, FP/SIMD and (with GICv3) the GIC system registers without
- * trapping, and sees this CPU's MIDR and MPIDR.
+ * trapping, and sees this CPU's MIDR and MPIDR. Its IRQs come through
+ * h2's virtual GIC, when there is one.
  */
 void arm64_el2_init(void)
 {
@@ -40,7 +43,8 @@ void arm64_el2_init(void)
 	__asm__ volatile("msr VBAR_EL2, %0" :: "r"(__arm64_vectors));
 	arm64_stage2_enable();
 	__asm__ volatile("msr HCR_EL2, %0" ::
-			 "r"(HCR_EL2_RW | HCR_EL2_TSC | HCR_EL2_VM));
+			 "r"(HCR_EL2_RW | HCR_EL2_TSC | HCR_EL2_VM |
+			     (arm64_vgic_enabled() ? HCR_EL2_IMO : 0)));
 
 	__asm__ volatile("mrs %0, CNTHCTL_EL2" : "=r"(value));
 	value |= CNTHCTL_EL1PCTEN | CNTHCTL_EL1PCEN;
@@ -59,6 +63,7 @@ void arm64_el2_init(void)
 	__asm__ volatile("mrs %0, MPIDR_EL1" : "=r"(value));
 	__asm__ volatile("msr VMPIDR_EL2, %0" :: "r"(value));
 	__asm__ volatile("isb" ::: "memory");
+	arm64_vgic_cpu_init();
 }
 
 void arm64_boot(unsigned long dtb)
@@ -91,6 +96,8 @@ void arm64_boot(unsigned long dtb)
 	if (loaded == 1)
 		hv_stage2_hole((hv_addr_t)__image_start,
 			       ((hv_addr_t)__image_end + 0xfff) & ~0xfffUL);
+	if (loaded >= 0)
+		arm64_vgic_setup();
 	if (loaded >= 0 && arm64_stage2_init() < 0)
 		loaded = -1;
 	if (loaded >= 0)

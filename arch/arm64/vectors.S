@@ -20,7 +20,8 @@ __arm64_vectors:
 
 	.align 7		/* lower EL, AArch64: sync */
 	b arm64_sync_lower_aarch64
-	vector_unhandled 9	/*   IRQ */
+	.align 7		/*   IRQ */
+	b arm64_irq_lower_aarch64
 	vector_unhandled 10	/*   FIQ */
 	vector_unhandled 11	/*   SError */
 	vector_unhandled 12	/* lower EL, AArch32: sync */
@@ -66,7 +67,14 @@ __arm64_vectors:
 arm64_sync_lower_aarch64:
 	save_frame
 	bl arm64_handle_trap
+	b arm64_trap_return
 
+/* a physical IRQ while the guest ran (HCR_EL2.IMO) */
+.global arm64_irq_lower_aarch64
+.type arm64_irq_lower_aarch64, %function
+arm64_irq_lower_aarch64:
+	save_frame
+	bl arm64_handle_irq
 
 .global arm64_trap_return
 arm64_trap_return:

@@ -30,7 +30,7 @@ endif
 # unaligned access faults: the compiler mustn't make any
 ARCH_CFLAGS := -mgeneral-regs-only -mstrict-align -DPLATFORM_$(PLATFORM)
 ARCH_LDFLAGS := --defsym=H2_LOAD_ADDR=$(LOAD_ADDR)
-ARCH_OBJS := entry.o boot.o vectors.o trap.o psci.o stage2.o vcpu.o fpsimd.o \
+ARCH_OBJS := entry.o boot.o vectors.o trap.o psci.o stage2.o vcpu.o fpsimd.o vgic.o \
 	console.o guest.o \
 	$(ARCH_PLATFORM_OBJS)
 QEMU := qemu-system-aarch64

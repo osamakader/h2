@@ -32,7 +32,7 @@ void arch_vcpu_init(struct hv_vcpu *vcpu, hv_addr_t entry, hv_addr_t stack,
 	vcpu->arch.vmpidr_el2 = mpidr;
 }
 
-/* the running vCPU's state, into vcpu; its timers stop */
+/* the running vCPU's state, into vcpu; its timers stop, then its interrupts */
 void arch_vcpu_save(struct hv_vcpu *vcpu)
 {
 	SAVE(SCTLR_EL1, sctlr_el1);
@@ -67,7 +67,8 @@ void arch_vcpu_save(struct hv_vcpu *vcpu)
 	arm64_fpsimd_save(&vcpu->arch.fpsimd);
 
 	/* not to go off for the next vCPU */
-	__asm__ volatile("msr CNTP_CTL_EL0, xzr; msr CNTV_CTL_EL0, xzr");
+	__asm__ volatile("msr CNTP_CTL_EL0, xzr; msr CNTV_CTL_EL0, xzr; isb");
+	arm64_vgic_save(&vcpu->arch.vgic);
 }
 
 void arch_vcpu_load(struct hv_vcpu *vcpu)
@@ -102,6 +103,7 @@ void arch_vcpu_load(struct hv_vcpu *vcpu)
 	LOAD(CNTV_CTL_EL0, cntv_ctl_el0);
 	LOAD(VMPIDR_EL2, vmpidr_el2);
 	arm64_fpsimd_load(&vcpu->arch.fpsimd);
+	arm64_vgic_load(&vcpu->arch.vgic);
 	__asm__ volatile("isb" ::: "memory");
 }
 

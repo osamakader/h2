@@ -6,6 +6,7 @@
 #define ARM64_ESR_EC_IABT_LOW	0x20
 #define ARM64_ESR_EC_DABT_LOW	0x24
 #define ARM64_ESR_EC_SMC64	0x17
+#define ARM64_ESR_EC_SYSREG	0x18
 
 /* SMC Calling Convention: the function id in w0 */
 #define SMCCC_FAST		(1U << 31)
