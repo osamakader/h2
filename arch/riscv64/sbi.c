@@ -17,6 +17,9 @@
 #define SBI_EXT_LEGACY_LAST	0x0fUL		/* legacy: result in a0 only */
 #define SBI_EXT_TIME		0x54494d45UL	/* "TIME" */
 #define SBI_TIME_SET_TIMER	0
+#define SBI_EXT_LEGACY_SEND_IPI	0x04UL
+#define SBI_EXT_IPI		0x735049UL	/* "sPI" */
+#define SBI_IPI_SEND_IPI	0
 #define SBI_EXT_HSM		0x48534dUL	/* "HSM" */
 #define SBI_EXT_SUSP		0x53555350UL	/* "SUSP" */
 #define SBI_EXT_RFNC		0x52464e43UL	/* "RFNC" */
@@ -92,6 +95,37 @@ void riscv64_sbi_set_timer(hv_addr_t stime)
 	firmware_ecall(fw);
 }
 
+/* h2's own IPI, to hart hartid */
+void riscv64_sbi_send_ipi(hv_addr_t hartid)
+{
+	hv_addr_t fw[8] = { 0 };
+
+	fw[0] = 1;
+	fw[1] = hartid;
+	fw[6] = SBI_IPI_SEND_IPI;
+	fw[7] = SBI_EXT_IPI;
+	firmware_ecall(fw);
+}
+
+/*
+ * The guest sends IPIs: mark them, for the harts to tell them from h2's.
+ * The legacy call's mask is in the guest's memory: all harts, then.
+ */
+static void mark_guest_ipis(hv_addr_t ext, hv_addr_t mask, hv_addr_t base)
+{
+	hv_addr_t h;
+	int slot;
+
+	for (slot = 0; slot < HV_MAX_CPUS; slot++) {
+		if (!hv_cpus[slot].used)
+			continue;
+		h = hv_cpus[slot].hwid;
+		if (ext == SBI_EXT_LEGACY_SEND_IPI || base == ~0UL ||
+		    (h >= base && h - base < 64 && (mask >> (h - base) & 1)))
+			riscv64_guest_ipi(slot);
+	}
+}
+
 void riscv64_secondary_boot(unsigned long hartid, unsigned long slot)
 {
 	riscv64_run_guest((int)slot, hv_cpus[slot].guest_entry, hartid,
@@ -128,6 +162,10 @@ void riscv64_sbi_call(struct hv_trap_frame *frame)
 		a[0] = (hv_addr_t)SBI_ERR_NOT_SUPPORTED;
 		return;
 	}
+
+	if ((ext == SBI_EXT_IPI && fid == SBI_IPI_SEND_IPI) ||
+	    ext == SBI_EXT_LEGACY_SEND_IPI)
+		mark_guest_ipis(ext, a[0], a[1]);
 
 	if ((ext == SBI_EXT_TIME && fid == SBI_TIME_SET_TIMER) ||
 	    ext == SBI_EXT_LEGACY_SET_TIMER) {

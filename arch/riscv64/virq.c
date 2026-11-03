@@ -1,7 +1,9 @@
+#include <arch/barrier.h>
 #include <arch/csr.h>
 #include <arch/sbi.h>
 #include <arch/virq.h>
 #include <arch/vplic.h>
+#include <hv/cpu.h>
 #include <hv/hv.h>
 #include <hv/vcpu.h>
 
@@ -70,11 +72,46 @@ void riscv64_guest_set_timer(hv_addr_t stime)
 }
 
 /*
- * An IPI for this hart (SBI send_ipi, from the guest on some hart): pass
- * it on. The guest clears it by clearing its sip.SSIP, which is hvip's.
+ * IPIs: the guest's (SBI send_ipi, which h2 forwards and marks), and h2's
+ * own, for a hart to look at its external interrupt again.
+ */
+static volatile int guest_ipi[HV_MAX_CPUS], kicked[HV_MAX_CPUS];
+
+void riscv64_guest_ipi(int slot)
+{
+	guest_ipi[slot] = 1;
+	hv_mb();
+}
+
+void riscv64_kick(int slot)
+{
+	kicked[slot] = 1;
+	hv_mb();
+	riscv64_sbi_send_ipi(hv_cpus[slot].hwid);
+}
+
+/*
+ * An IPI for this hart. The guest's is passed on (it clears it by
+ * clearing its sip.SSIP, which is hvip's); one from neither h2 nor the
+ * guest (the firmware's?) is taken for the guest's too. A flag is only
+ * cleared once seen set: one set meanwhile comes with its own IPI.
  */
 void riscv64_soft_interrupt(void)
 {
+	int me = hv_cpu_index(), guest = 0, kick = 0;
+
 	csr_clear(sip, 1UL << IRQ_S_SOFT);
-	csr_set(hvip, 1UL << IRQ_VS_SOFT);
+	hv_mb();
+	if (guest_ipi[me]) {
+		guest_ipi[me] = 0;
+		guest = 1;
+	}
+	if (kicked[me]) {
+		kicked[me] = 0;
+		kick = 1;
+	}
+	if (guest || !kick)
+		csr_set(hvip, 1UL << IRQ_VS_SOFT);
+	if (kick)
+		riscv64_external_sync();
 }
