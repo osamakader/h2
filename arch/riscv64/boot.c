@@ -7,6 +7,7 @@
 #include <hv/hv.h>
 #include <hv/stage2.h>
 #include <hv/vcpu.h>
+#include <hv/virtio.h>
 #include <hv/vuart.h>
 
 extern char __riscv64_trap_vector[];
@@ -16,6 +17,8 @@ extern void riscv64_guest_entry(void);
 
 #define QEMU_VIRT_UART0		0x10000000UL
 #define QEMU_VIRT_UART0_IRQ	10		/* its PLIC source */
+#define QEMU_VIRT_VIRTIO0	0x10001000UL	/* virtio-mmio slot 0 */
+#define QEMU_VIRT_VIRTIO0_IRQ	1
 #define HCOUNTEREN_CY_TM_IR	0x7UL	/* cycle, time, instret */
 
 /*
@@ -79,6 +82,9 @@ void riscv64_boot(unsigned long hartid, unsigned long dtb)
 	/* the console UART is h2's now; the guest gets a virtual one */
 	if (loaded >= 0)
 		hv_vuart_16550_init(QEMU_VIRT_UART0, QEMU_VIRT_UART0_IRQ);
+	/* and the disk, if there is one: the real one h2 drives */
+	if (loaded >= 0)
+		hv_vblk_init(QEMU_VIRT_VIRTIO0, QEMU_VIRT_VIRTIO0_IRQ);
 	if (loaded >= 0 && riscv64_stage2_init() < 0)
 		loaded = -1;
 
