@@ -39,6 +39,11 @@ hv_addr_t hv_main(hv_addr_t dtb);
 int hv_load_guest(hv_addr_t dtb, hv_addr_t *entry);
 struct hv_hcall_ret hv_hypercall(hv_addr_t nr, hv_addr_t arg0, hv_addr_t arg1);
 void hv_console_putchar(char ch);
+/* the console UART's own: raw output, input, its receive interrupt */
+void hv_console_out(char ch);
+int hv_console_getc(void);
+void hv_console_rx_init(void);
+void hv_console_rx_ack(void);
 void hv_console_lock(void);
 void hv_console_unlock(void);
 void hv_console_write(const char *text);
