@@ -2,6 +2,7 @@
 #include <arch/trap.h>
 #include <arch/vgic.h>
 #include <hv/hv.h>
+#include <hv/mmio.h>
 #include <hv/vcpu.h>
 
 static void smccc_call(struct hv_trap_frame *frame)
@@ -27,6 +28,57 @@ static void smccc_call(struct hv_trap_frame *frame)
 	}
 }
 
+/* data abort syndrome (ESR_EL2.ISS), when ISV says it is valid */
+#define DABT_ISV		(1UL << 24)
+#define DABT_SAS(iss)		(((iss) >> 22) & 3)	/* size: 1 << SAS */
+#define DABT_SSE		(1UL << 21)		/* sign extend */
+#define DABT_SRT(iss)		(((iss) >> 16) & 0x1f)	/* the register */
+#define DABT_SF			(1UL << 15)		/* 64-bit register */
+#define DABT_S1PTW		(1UL << 7)		/* on its stage 1 walk */
+#define DABT_WNR		(1UL << 6)		/* a write */
+
+/* the faulting IPA (HPFAR_EL2.FIPA: its page) */
+static hv_addr_t fault_ipa(const struct hv_trap_frame *frame)
+{
+	unsigned long hpfar;
+
+	__asm__ volatile("mrs %0, HPFAR_EL2" : "=r"(hpfar));
+	return (hpfar >> 4) << 12 | (frame->value & 0xfff);
+}
+
+/*
+ * A data abort from the guest at a hole in stage 2: 1 if it was an
+ * emulated device's, now done. Only single loads and stores (ISV):
+ * not pairs, nor with writeback.
+ */
+static int mmio_abort(struct hv_trap_frame *frame)
+{
+	unsigned long iss = frame->cause & 0x1ffffff;
+	unsigned int rt = DABT_SRT(iss);
+	int size = 1 << DABT_SAS(iss), write = (iss & DABT_WNR) != 0;
+	uint64_t value = 0;
+
+	if (!(iss & DABT_ISV) || (iss & DABT_S1PTW))
+		return 0;
+
+	if (write && rt != 31)
+		value = frame->regs[rt];
+	if (size < 8)
+		value &= (1UL << (8 * size)) - 1;
+	if (!hv_mmio_emulate(fault_ipa(frame), size, write, &value))
+		return 0;
+
+	if (!write && rt != 31) {
+		if ((iss & DABT_SSE) && size < 8 && (value >> (8 * size - 1) & 1))
+			value |= ~0UL << (8 * size);
+		if (!(iss & DABT_SF))
+			value &= 0xffffffffUL;
+		frame->regs[rt] = value;
+	}
+	frame->pc += 4;
+	return 1;
+}
+
 void arm64_handle_trap(struct hv_trap_frame *frame)
 {
 	switch (ARM64_ESR_EC(frame->cause)) {
@@ -42,18 +94,19 @@ void arm64_handle_trap(struct hv_trap_frame *frame)
 	case ARM64_ESR_EC_SYSREG:
 		if (arm64_vgic_sysreg(frame))
 			break;
+		goto unhandled;
+	case ARM64_ESR_EC_DABT_LOW:
+		if (mmio_abort(frame))
+			break;
 		/* fall through */
 	default:
+	unhandled:
 		hv_console_lock();
 		hv_dump_trap("unhandled arm64 trap", frame);
 		if (ARM64_ESR_EC(frame->cause) == ARM64_ESR_EC_IABT_LOW ||
 		    ARM64_ESR_EC(frame->cause) == ARM64_ESR_EC_DABT_LOW) {
-			unsigned long hpfar;
-
-			/* HPFAR_EL2.FIPA: the faulting IPA's page */
-			__asm__ volatile("mrs %0, HPFAR_EL2" : "=r"(hpfar));
 			hv_console_write("  ipa    ");
-			hv_console_hex((hpfar >> 4) << 12 | (frame->value & 0xfff));
+			hv_console_hex(fault_ipa(frame));
 			hv_console_putchar('\n');
 		}
 		hv_console_unlock();
