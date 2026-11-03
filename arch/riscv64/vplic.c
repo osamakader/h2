@@ -1,6 +1,7 @@
 #include <arch/csr.h>
 #include <arch/trap.h>
 #include <arch/virq.h>
+#include <hv/cpu.h>
 #include <hv/hv.h>
 #include <hv/mmio.h>
 
@@ -22,16 +23,103 @@
 
 /* qemu virt: hart h has context 2h (M-mode) and 2h + 1 (S-mode) */
 #define PLIC_CONTEXT_S(ctx)	((ctx) & 1)
+#define PLIC_PRIORITY(src)	((volatile uint32_t *)(QEMU_VIRT_PLIC + 4 * (src)))
+#define PLIC_ENABLE0(ctx)	((volatile uint32_t *)(QEMU_VIRT_PLIC + 0x2000 + 0x80 * (ctx)))
+#define PLIC_THRESHOLD(ctx)	((volatile uint32_t *)(PLIC_CONTEXT_BASE + PLIC_CONTEXT_SIZE * (ctx)))
 
-/* hvip.VSEIP = sip.SEIP; while it is up, h2 needn't hear about it again */
+/*
+ * Emulated devices' interrupts: virtual sources (1-31), with the numbers
+ * their real devices have. The guest enables and prioritizes them on
+ * the real PLIC, which h2 reads; a real interrupt of such a source is
+ * h2's, which claims and completes it itself. The guest claims and
+ * completes the virtual one: its line up, not claimed yet, enabled in the
+ * hart's context, over its threshold.
+ */
+static volatile uint32_t vsrc_level, vsrc_claimed;
+static struct hv_lock vsrc_lock;
+
+static unsigned int this_context(void)
+{
+	return 2 * (unsigned int)hv_cpus[hv_cpu_index()].hwid + 1;
+}
+
+/* the virtual source this context would get now, or 0 */
+static unsigned int vsrc_ready(unsigned int ctx)
+{
+	uint32_t ready = vsrc_level & ~vsrc_claimed & *PLIC_ENABLE0(ctx);
+	uint32_t threshold = *PLIC_THRESHOLD(ctx), best = 0, prio, top = 0;
+	unsigned int src;
+
+	for (src = 1; src < 32 && ready >> src; src++) {
+		if (!(ready >> src & 1))
+			continue;
+		prio = *PLIC_PRIORITY(src);
+		if (prio > threshold && prio > top) {
+			top = prio;
+			best = src;
+		}
+	}
+	return best;
+}
+
+/*
+ * hvip.VSEIP: the hart's sip.SEIP, or a virtual source ready; while SEIP
+ * is up, h2 needn't hear about it again
+ */
 void riscv64_external_sync(void)
 {
-	if (csr_read(sip) & (1UL << IRQ_S_EXT)) {
+	int seip = (csr_read(sip) & (1UL << IRQ_S_EXT)) != 0;
+
+	if (seip || (vsrc_level && vsrc_ready(this_context())))
 		csr_set(hvip, 1UL << IRQ_VS_EXT);
-		csr_clear(sie, 1UL << IRQ_S_EXT);
-	} else {
+	else
 		csr_clear(hvip, 1UL << IRQ_VS_EXT);
+	if (seip)
+		csr_clear(sie, 1UL << IRQ_S_EXT);
+	else
 		csr_set(sie, 1UL << IRQ_S_EXT);
+}
+
+/* an emulated device's interrupt line, for this hart */
+void hv_virq_line(unsigned int irq, int level)
+{
+	if (irq == 0 || irq > 31)
+		return;
+	hv_lock(&vsrc_lock);
+	if (level)
+		vsrc_level |= 1U << irq;
+	else
+		vsrc_level &= ~(1U << irq);
+	hv_unlock(&vsrc_lock);
+	riscv64_external_sync();
+}
+
+/* a claim: h2's own sources handled first, then the guest's virtual ones */
+static uint32_t claim(volatile uint32_t *reg, unsigned int ctx)
+{
+	uint32_t id = *reg, n;
+
+	for (n = 0; id && n < 32 && hv_mmio_phys_irq(id); n++) {
+		*reg = id;
+		id = *reg;
+	}
+	if (!id) {
+		hv_lock(&vsrc_lock);
+		id = vsrc_ready(ctx);
+		vsrc_claimed |= id ? 1U << id : 0;
+		hv_unlock(&vsrc_lock);
+	}
+	return id;
+}
+
+static void complete(volatile uint32_t *reg, uint32_t id)
+{
+	if (id && id < 32 && (vsrc_claimed & 1U << id)) {
+		hv_lock(&vsrc_lock);
+		vsrc_claimed &= ~(1U << id);
+		hv_unlock(&vsrc_lock);
+	} else {
+		*reg = id;
 	}
 }
 
@@ -44,9 +132,10 @@ static uint64_t context_read(void *ctx, hv_addr_t offset, int size)
 	(void)ctx;
 	if (size != 4 || !PLIC_CONTEXT_S(offset / PLIC_CONTEXT_SIZE))
 		return 0;
-	value = *reg;
-	if ((offset & (PLIC_CONTEXT_SIZE - 1)) == PLIC_CLAIM)
-		riscv64_external_sync();
+	if ((offset & (PLIC_CONTEXT_SIZE - 1)) != PLIC_CLAIM)
+		return *reg;
+	value = claim(reg, (unsigned int)(offset / PLIC_CONTEXT_SIZE));
+	riscv64_external_sync();
 	return value;
 }
 
@@ -57,9 +146,12 @@ static void context_write(void *ctx, hv_addr_t offset, int size, uint64_t value)
 	(void)ctx;
 	if (size != 4 || !PLIC_CONTEXT_S(offset / PLIC_CONTEXT_SIZE))
 		return;
-	*reg = (uint32_t)value;
-	if ((offset & (PLIC_CONTEXT_SIZE - 1)) == PLIC_CLAIM)
-		riscv64_external_sync();
+	if ((offset & (PLIC_CONTEXT_SIZE - 1)) != PLIC_CLAIM) {
+		*reg = (uint32_t)value;
+		return;
+	}
+	complete(reg, (uint32_t)value);
+	riscv64_external_sync();
 }
 
 static const struct hv_mmio_dev contexts = {
