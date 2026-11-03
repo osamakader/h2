@@ -13,6 +13,8 @@
  */
 #define PLATFORM_RAM_BASE	0x0
 #define PLATFORM_UART0		0xfe201000
+#define PLATFORM_UART0_SIZE	0x200		/* uart2-5 follow it */
+#define PLATFORM_UART0_IRQ	153		/* SPI 121 */
 
 /* the firmware's spin table: CPU n (MPIDR Aff0) waits on 0xd8 + 8n */
 #define PLATFORM_SPIN_TABLE	0xd8
@@ -31,6 +33,8 @@
 /* qemu virt */
 #define PLATFORM_RAM_BASE	0x40000000
 #define PLATFORM_UART0		0x09000000
+#define PLATFORM_UART0_SIZE	0x1000
+#define PLATFORM_UART0_IRQ	33		/* SPI 1 */
 
 /* the GIC: gic-version=3 (redistributors), or 2 (GICC, GICV, GICH) */
 #define PLATFORM_GICD		0x08000000

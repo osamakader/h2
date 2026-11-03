@@ -6,6 +6,7 @@
 #include <hv/hv.h>
 #include <hv/stage2.h>
 #include <hv/vcpu.h>
+#include <hv/vuart.h>
 
 extern char __arm64_vectors[];
 extern char __guest_stack_top[];
@@ -98,6 +99,10 @@ void arm64_boot(unsigned long dtb)
 			       ((hv_addr_t)__image_end + 0xfff) & ~0xfffUL);
 	if (loaded >= 0)
 		arm64_vgic_setup();
+	/* the console UART is h2's now; the guest gets a virtual one */
+	if (loaded >= 0)
+		hv_vuart_pl011_init(PLATFORM_UART0, PLATFORM_UART0_SIZE,
+				    PLATFORM_UART0_IRQ);
 	if (loaded >= 0 && arm64_stage2_init() < 0)
 		loaded = -1;
 	if (loaded >= 0)
