@@ -60,7 +60,7 @@ COMMON_CFLAGS := \
 	-fno-tree-loop-distribute-patterns \
 	-Iinclude -I$(ARCH_DIR)/include
 
-COMMON_OBJS := hv.o cpu.o vcpu.o fdt.o elf.o stage2.o mmio.o vuart.o guest_image.o
+COMMON_OBJS := hv.o cpu.o vcpu.o fdt.o elf.o stage2.o mmio.o vuart.o vblk.o guest_image.o
 
 # the guest: an ELF file to embed and load (default: the built-in guest)
 GUEST ?=
