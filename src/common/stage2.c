@@ -6,7 +6,7 @@
 #define ROOT_LEVEL	2
 #define LEVEL_SIZE(l)	(1UL << (PAGE_SHIFT + 9 * (l)))
 
-#define MAX_HOLES	6
+#define MAX_HOLES	8
 #define POOL_TABLES	10
 
 static uint64_t pool[POOL_TABLES][PT_ENTRIES] __attribute__((aligned(4096)));
