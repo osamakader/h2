@@ -1,3 +1,4 @@
+#include <arch/barrier.h>
 #include <arch/platform.h>
 #include <arch/trap.h>
 #include <arch/vgic.h>
@@ -30,6 +31,7 @@
  */
 
 #define MAINT_INTID		25	/* PPI 9, on both platforms */
+#define KICK_INTID		15	/* an SGI h2 keeps for itself */
 #define SPURIOUS(id)		((id) >= 1020 && (id) < 1024)
 #define LPI_FIRST		8192
 
@@ -291,12 +293,63 @@ static int place(uint64_t lr)
  */
 #define VLINES			4
 #define GICD_IPRIORITYR		0x400
+#define GICD_ITARGETSR		0x800	/* GICv2: a CPU mask per SPI */
+#define GICD_SGIR		0xf00
+#define GICD_IROUTER		0x6000	/* GICv3: an affinity per SPI */
+#define GICD_IROUTER_ANY	(1UL << 31)
 
 static struct {
 	unsigned int intid;
 	volatile int level;
+	volatile int cpu;		/* where the guest routes it, or -1 */
 } vlines[VLINES];
 static int nvlines;
+
+/* the slot of the CPU the guest routes SPI intid to; -1: any, or not known */
+static int route(unsigned int intid)
+{
+	hv_addr_t want;
+	uint8_t mask;
+	int slot, k;
+
+	if (intid < 32 || intid >= 1020)
+		return -1;
+	if (gic3) {
+		want = *(volatile uint64_t *)((hv_addr_t)PLATFORM_GICD +
+					      GICD_IROUTER + 8 * intid);
+		if (want & GICD_IROUTER_ANY)
+			return -1;
+		want &= 0xff00ffffffUL;		/* as MPIDR has them */
+	} else {
+		mask = *(volatile uint8_t *)((hv_addr_t)PLATFORM_GICD +
+					     GICD_ITARGETSR + intid);
+		for (k = 0; k < 8 && !(mask >> k & 1); k++)
+			;
+		if (k == 8)
+			return -1;
+		want = (hv_addr_t)k;		/* CPU interface k: Aff0 k */
+	}
+	for (slot = 0; slot < HV_MAX_CPUS; slot++)
+		if (hv_cpus[slot].used &&
+		    (gic3 ? hv_cpus[slot].hwid : hv_cpus[slot].hwid & 0xff) == want)
+			return slot;
+	return -1;
+}
+
+/* have another CPU look at the lines (h2's own SGI) */
+static void kick(int slot)
+{
+	hv_addr_t aff = hv_cpus[slot].hwid;
+
+	if (gic3) {
+		SYSREG_WRITE(ICC_SGI1R_EL1, (uint64_t)KICK_INTID << 24 |
+			     (aff >> 32 & 0xff) << 48 | (aff >> 16 & 0xff) << 32 |
+			     (aff >> 8 & 0xff) << 16 | 1UL << (aff & 15));
+		__asm__ volatile("isb" ::: "memory");
+	} else {
+		*mmio(PLATFORM_GICD + GICD_SGIR) = 1U << (16 + (aff & 7)) | KICK_INTID;
+	}
+}
 
 /* intid pending or active for the running vCPU, or waiting in its queue */
 static int vline_present(struct arm64_vgic *vgic, unsigned int intid)
@@ -333,16 +386,24 @@ static void vline_retract(struct arm64_vgic *vgic, unsigned int intid)
 	vgic->queued = n;
 }
 
-/* lines that are up and the guest doesn't have: into the queue */
+/*
+ * The lines, for the vCPU that runs here: one that is up and routed here
+ * goes in its queue unless it has it already; one that isn't, out of it
+ * unless it has taken it.
+ */
 static void vline_resample(struct arm64_vgic *vgic)
 {
 	unsigned int intid;
-	int i;
+	int i, here = hv_cpu_index();
 
 	for (i = 0; i < nvlines; i++) {
 		intid = vlines[i].intid;
-		if (!vlines[i].level || vline_present(vgic, intid) ||
-		    vgic->queued == ARM64_VGIC_QUEUE)
+		if (!vlines[i].level ||
+		    (vlines[i].cpu >= 0 && vlines[i].cpu != here)) {
+			vline_retract(vgic, intid);
+			continue;
+		}
+		if (vline_present(vgic, intid) || vgic->queued == ARM64_VGIC_QUEUE)
 			continue;
 		/* the priority the guest gave it in the distributor */
 		vgic->queue[vgic->queued++] = intid | LR_PENDING | LR_EOI |
@@ -396,13 +457,14 @@ static void inject(struct arm64_vgic *vgic, uint64_t lr)
 }
 
 /*
- * An emulated device's interrupt line (an SPI) goes up or down: to the
- * vCPU that runs here, as GICv2 / GICv3 would for a level-sensitive one.
+ * An emulated device's interrupt line (an SPI) goes up or down: for the
+ * vCPU that runs on the CPU the guest routes it to, as GICv2 / GICv3
+ * would for a level-sensitive one. Another CPU hears of it from h2's SGI.
  */
 void hv_virq_line(unsigned int irq, int level)
 {
 	struct arm64_vgic *vgic;
-	int i;
+	int i, cpu;
 
 	for (i = 0; i < nvlines && vlines[i].intid != irq; i++)
 		;
@@ -411,14 +473,20 @@ void hv_virq_line(unsigned int irq, int level)
 			return;
 		vlines[nvlines++].intid = irq;
 	}
-	vlines[i].level = level;
-
-	if (!enabled || !hv_vcpu_current())
+	if (!enabled || !hv_vcpu_current()) {
+		vlines[i].level = level;
 		return;
+	}
+	cpu = route(irq);
+	vlines[i].cpu = cpu;
+	hv_mb();
+	vlines[i].level = level;
+	hv_mb();
+
 	vgic = &hv_vcpu_current()->arch.vgic;
-	if (!level)
-		vline_retract(vgic, irq);
 	refill(vgic);
+	if (cpu >= 0 && cpu != hv_cpu_index())
+		kick(cpu);
 }
 
 /* a physical IRQ, taken from the guest: on to the running vCPU */
@@ -433,7 +501,7 @@ void arm64_handle_irq(struct hv_trap_frame *frame)
 		     (gic3 ? LR_GROUP1 : 0);
 		priority_drop(iar);
 
-		if (intid == MAINT_INTID) {
+		if (intid == MAINT_INTID || intid == KICK_INTID) {
 			deactivate(iar);
 			refill(vgic);
 		} else if (hv_mmio_phys_irq((unsigned int)intid)) {
@@ -467,6 +535,16 @@ int arm64_vgic_sysreg(struct hv_trap_frame *frame)
 
 	switch (iss & ISS_SYSREG_MASK) {
 	case ISS_SYSREG(3, 0, 12, 11, 5):
+	case ISS_SYSREG(3, 0, 12, 11, 6):
+	case ISS_SYSREG(3, 0, 12, 11, 7):
+		break;
+	default:
+		return 0;
+	}
+
+	/* SGI 15 is h2's: the guest's goes nowhere */
+	switch ((v >> 24 & 0xf) == KICK_INTID ? 0 : iss & ISS_SYSREG_MASK) {
+	case ISS_SYSREG(3, 0, 12, 11, 5):
 		SYSREG_WRITE(ICC_SGI1R_EL1, v);
 		break;
 	case ISS_SYSREG(3, 0, 12, 11, 6):
@@ -475,8 +553,6 @@ int arm64_vgic_sysreg(struct hv_trap_frame *frame)
 	case ISS_SYSREG(3, 0, 12, 11, 7):
 		SYSREG_WRITE(ICC_SGI0R_EL1, v);
 		break;
-	default:
-		return 0;
 	}
 	__asm__ volatile("isb" ::: "memory");
 	frame->pc += 4;
@@ -631,13 +707,15 @@ void arm64_vgic_cpu_init(void)
 			return;
 		}
 		ppi_regs[hv_cpu_index()] = rd + GICR_SGI_BASE;
-		*mmio(rd + GICR_SGI_BASE + GICx_IGROUPR0) |= 1U << MAINT_INTID;
+		*mmio(rd + GICR_SGI_BASE + GICx_IGROUPR0) |=
+			1U << MAINT_INTID | 1U << KICK_INTID;
 	} else {
 		*mmio(PLATFORM_GICC + GICC_PMR) = 0xff;
 		*mmio(PLATFORM_GICC + GICC_CTLR) = GICC_CTLR_ENABLE | GICC_CTLR_EOIMODE;
 		ppi_regs[hv_cpu_index()] = PLATFORM_GICD;
 	}
-	*mmio(ppi_regs[hv_cpu_index()] + GICx_ISENABLER0) = 1U << MAINT_INTID;
+	*mmio(ppi_regs[hv_cpu_index()] + GICx_ISENABLER0) =
+		1U << MAINT_INTID | 1U << KICK_INTID;
 	for (i = 0; i < nr_lrs; i++)
 		lr_put(i, 0);
 	hcr_put(0);
