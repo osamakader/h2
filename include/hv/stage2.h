@@ -11,6 +11,7 @@
  */
 void hv_stage2_hole(hv_addr_t start, hv_addr_t end);
 void hv_stage2_remap(hv_addr_t start, hv_addr_t end, hv_addr_t to);
+int hv_stage2_guest_range(hv_addr_t start, hv_addr_t size);
 int hv_stage2_build(uint64_t *root, int entries);
 
 /* the architecture's descriptors */

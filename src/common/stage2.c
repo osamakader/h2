@@ -92,9 +92,26 @@ void hv_stage2_remap(hv_addr_t start, hv_addr_t end, hv_addr_t to)
 	}
 }
 
+/*
+ * Whether [start, start + size) is the guest's own memory as it sees it
+ * (identity mapped, in no hole): for buffers it hands to an emulated
+ * device. Not past what the stage 2 tables reach.
+ */
+static hv_addr_t reach;
+
+int hv_stage2_guest_range(hv_addr_t start, hv_addr_t size)
+{
+	hv_addr_t pa;
+
+	if (start + size < start || start + size > reach)
+		return 0;
+	return size == 0 || !in_hole(start, start + size, &pa);
+}
+
 /* once, after the holes: 0, or -1 */
 int hv_stage2_build(uint64_t *root, int entries)
 {
+	reach = entries * LEVEL_SIZE(ROOT_LEVEL);
 	if (fill(root, entries, ROOT_LEVEL, 0) < 0) {
 		hv_console_write("h2: stage 2: out of page tables\n");
 		return -1;
