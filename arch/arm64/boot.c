@@ -6,6 +6,7 @@
 #include <hv/hv.h>
 #include <hv/stage2.h>
 #include <hv/vcpu.h>
+#include <hv/virtio.h>
 #include <hv/vuart.h>
 
 extern char __arm64_vectors[];
@@ -103,6 +104,11 @@ void arm64_boot(unsigned long dtb)
 	if (loaded >= 0)
 		hv_vuart_pl011_init(PLATFORM_UART0, PLATFORM_UART0_SIZE,
 				    PLATFORM_UART0_IRQ);
+#ifdef PLATFORM_VIRTIO0
+	/* and the disk, if there is one: the real one h2 drives */
+	if (loaded >= 0)
+		hv_vblk_init(PLATFORM_VIRTIO0, PLATFORM_VIRTIO0_IRQ);
+#endif
 	if (loaded >= 0 && arm64_stage2_init() < 0)
 		loaded = -1;
 	if (loaded >= 0)

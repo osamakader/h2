@@ -36,6 +36,10 @@
 #define PLATFORM_UART0_SIZE	0x1000
 #define PLATFORM_UART0_IRQ	33		/* SPI 1 */
 
+/* virtio-mmio slot 0 (make run-o2: the disk) */
+#define PLATFORM_VIRTIO0	0x0a000000
+#define PLATFORM_VIRTIO0_IRQ	48		/* SPI 16 */
+
 /* the GIC: gic-version=3 (redistributors), or 2 (GICC, GICV, GICH) */
 #define PLATFORM_GICD		0x08000000
 #define PLATFORM_GICR		0x080a0000
