@@ -37,6 +37,9 @@ struct hv_trap_frame {
 
 hv_addr_t hv_main(hv_addr_t dtb);
 int hv_load_guest(hv_addr_t dtb, hv_addr_t *entry);
+int hv_load_image(const char *image, const char *image_end, hv_addr_t offset,
+		  hv_addr_t low_limit, hv_addr_t high_limit, hv_addr_t dtb,
+		  hv_addr_t *entry);
 struct hv_hcall_ret hv_hypercall(hv_addr_t nr, hv_addr_t arg0, hv_addr_t arg1);
 void hv_console_putchar(char ch);
 /* the console UART's own: raw output, input, its receive interrupt */

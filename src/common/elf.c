@@ -41,7 +41,6 @@ struct elf64_phdr {
 	uint64_t p_align;
 };
 
-extern const char hv_guest_image[], hv_guest_image_end[];
 extern char __image_start[], __image_end[];
 
 static int overlaps(uint64_t a, uint64_t a_end, uint64_t b, uint64_t b_end)
@@ -76,13 +75,17 @@ static const struct elf64_phdr *guest_phdrs(const struct elf64_ehdr *eh,
 }
 
 /*
- * 1 and the entry in *entry if a guest was loaded, 0 if none is
- * embedded, -1 if it can't be loaded. dtb (or 0) is kept out of its way.
+ * Load the ELF file at image, each segment at its guest physical address
+ * + offset, all of them in guest physical [low_limit, high_limit). 1 and
+ * the entry (guest physical) in *entry if it was loaded, 0 if the image is
+ * empty, -1 if it can't be. dtb (or 0) is kept out of its way.
  */
-int hv_load_guest(hv_addr_t dtb, hv_addr_t *entry)
+int hv_load_image(const char *image, const char *image_end, hv_addr_t offset,
+		  hv_addr_t low_limit, hv_addr_t high_limit, hv_addr_t dtb,
+		  hv_addr_t *entry)
 {
-	const struct elf64_ehdr *eh = (const void *)hv_guest_image;
-	uint64_t size = (uint64_t)(hv_guest_image_end - hv_guest_image);
+	const struct elf64_ehdr *eh = (const void *)image;
+	uint64_t size = (uint64_t)(image_end - image);
 	uint64_t dtb_end = dtb ? dtb + fdt_size((void *)dtb) : 0;
 	const struct elf64_phdr *ph;
 	uint64_t low = ~0UL, high = 0, i, j;
@@ -101,10 +104,12 @@ int hv_load_guest(hv_addr_t dtb, hv_addr_t *entry)
 		if (ph[i].p_filesz > ph[i].p_memsz ||
 		    ph[i].p_offset + ph[i].p_filesz > size || end < start)
 			return guest_error("segment out of bounds");
-		if (overlaps(start, end, (uint64_t)__image_start,
+		if (start < low_limit || end > high_limit)
+			return guest_error("segment outside its memory");
+		if (overlaps(start + offset, end + offset, (uint64_t)__image_start,
 			     (uint64_t)__image_end))
 			return guest_error("segment overlaps h2");
-		if (overlaps(start, end, dtb, dtb_end))
+		if (overlaps(start + offset, end + offset, dtb, dtb_end))
 			return guest_error("segment overlaps the device tree");
 		if (start < low)
 			low = start;
@@ -116,8 +121,8 @@ int hv_load_guest(hv_addr_t dtb, hv_addr_t *entry)
 
 	/* byte accesses: Device memory on arm64 with the MMU off */
 	for (i = 0; i < eh->e_phnum; i++) {
-		volatile char *dst = (volatile char *)ph[i].p_paddr;
-		const volatile char *src = hv_guest_image + ph[i].p_offset;
+		volatile char *dst = (volatile char *)(ph[i].p_paddr + offset);
+		const volatile char *src = image + ph[i].p_offset;
 
 		if (ph[i].p_type != PT_LOAD)
 			continue;
@@ -143,4 +148,13 @@ int hv_load_guest(hv_addr_t dtb, hv_addr_t *entry)
 	hv_console_putchar('\n');
 
 	return 1;
+}
+
+extern const char hv_guest_image[], hv_guest_image_end[];
+
+/* guest 0's, the embedded one: at its physical addresses */
+int hv_load_guest(hv_addr_t dtb, hv_addr_t *entry)
+{
+	return hv_load_image(hv_guest_image, hv_guest_image_end, 0, 0, ~0UL,
+			     dtb, entry);
 }

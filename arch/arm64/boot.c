@@ -93,6 +93,8 @@ void arm64_boot(unsigned long dtb)
 		dtb = PLATFORM_RAM_BASE;
 	dtb = hv_main(dtb);
 	loaded = hv_load_guest(dtb, &entry);
+	if (loaded == 1)
+		dtb = hv_guest2_prepare(dtb);
 
 	/* h2's pages are no business of a guest of its own (not built in) */
 	if (loaded == 1)
@@ -122,6 +124,7 @@ void arm64_boot(unsigned long dtb)
 		/* the guest's code went out through the data side */
 		__asm__ volatile("dsb sy; ic iallu; dsb sy; isb" ::: "memory");
 		vcpu = hv_vcpu_new(0, entry, 0, dtb, 0);
+		hv_guest2_start(0, mpidr & MPIDR_AFFINITY);
 	} else if (loaded == 0) {
 		vcpu = hv_vcpu_new(0, (hv_addr_t)arm64_guest_entry,
 				   (hv_addr_t)__guest_stack_top, dtb, 0);

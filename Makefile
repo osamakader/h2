@@ -60,11 +60,14 @@ COMMON_CFLAGS := \
 	-fno-tree-loop-distribute-patterns \
 	-Iinclude -I$(ARCH_DIR)/include
 
-COMMON_OBJS := hv.o cpu.o vcpu.o fdt.o elf.o stage2.o mmio.o vuart.o vblk.o guest_image.o
+COMMON_OBJS := hv.o cpu.o vcpu.o guest.o fdt.o elf.o stage2.o mmio.o vuart.o vblk.o guest_image.o
 
 # the guest: an ELF file to embed and load (default: the built-in guest)
 GUEST ?=
 GUEST_FILE := $(if $(GUEST),$(abspath $(GUEST)))
+# a second guest, in half of RAM (qemu virt): MEM twice what each needs
+GUEST2 ?=
+GUEST2_FILE := $(if $(GUEST2),$(abspath $(GUEST2)))
 OBJS := $(addprefix $(BUILD_DIR)/common/,$(COMMON_OBJS)) \
 	$(addprefix $(BUILD_DIR)/arch/,$(ARCH_OBJS))
 
@@ -87,16 +90,25 @@ $(BUILD_DIR)/common/%.o: src/common/%.S
 
 # the guest, stripped: only its segments matter. Rebuilt when the
 # guest file, or which file it is, changes.
-$(BUILD_DIR)/common/guest_image.o: $(if $(GUEST_FILE),$(BUILD_DIR)/guest.elf) $(BUILD_DIR)/guest
+$(BUILD_DIR)/common/guest_image.o: $(if $(GUEST_FILE),$(BUILD_DIR)/guest.elf) \
+	$(if $(GUEST2_FILE),$(BUILD_DIR)/guest2.elf) $(BUILD_DIR)/guest $(BUILD_DIR)/guest2
 $(BUILD_DIR)/common/guest_image.o: EXTRA_CFLAGS := \
-	$(if $(GUEST_FILE),-DHV_GUEST_IMAGE='"$(abspath $(BUILD_DIR))/guest.elf"')
+	$(if $(GUEST_FILE),-DHV_GUEST_IMAGE='"$(abspath $(BUILD_DIR))/guest.elf"') \
+	$(if $(GUEST2_FILE),-DHV_GUEST2_IMAGE='"$(abspath $(BUILD_DIR))/guest2.elf"')
 
 $(BUILD_DIR)/guest.elf: $(GUEST_FILE) $(BUILD_DIR)/guest
 	$(OBJCOPY) --strip-all $(GUEST_FILE) $@
 
+$(BUILD_DIR)/guest2.elf: $(GUEST2_FILE) $(BUILD_DIR)/guest2
+	$(OBJCOPY) --strip-all $(GUEST2_FILE) $@
+
 $(BUILD_DIR)/guest: FORCE
 	@mkdir -p $(dir $@)
 	@echo '$(GUEST_FILE)' | cmp -s - $@ || echo '$(GUEST_FILE)' > $@
+
+$(BUILD_DIR)/guest2: FORCE
+	@mkdir -p $(dir $@)
+	@echo '$(GUEST2_FILE)' | cmp -s - $@ || echo '$(GUEST2_FILE)' > $@
 
 $(BUILD_DIR)/arch/%.o: $(ARCH_DIR)/%.c
 	mkdir -p $(dir $@)

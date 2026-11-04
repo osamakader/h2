@@ -52,6 +52,9 @@ void riscv64_run_guest(int slot, hv_addr_t entry, hv_addr_t arg0,
 
 	riscv64_hart_init();
 	vcpu = hv_vcpu_new(slot, entry, 0, arg0, arg1);
+	/* the boot hart: a second guest's, too */
+	if (slot == 0)
+		hv_guest2_start(0, arg0);
 	if (vcpu)
 		hv_vcpu_run(vcpu);
 	hv_console_write("h2: no room for another vCPU\n");
@@ -72,6 +75,8 @@ void riscv64_boot(unsigned long hartid, unsigned long dtb)
 		loaded = -1;
 	} else {
 		loaded = hv_load_guest(dtb, &entry);
+		if (loaded == 1)
+			dtb = hv_guest2_prepare(dtb);
 	}
 
 	/* h2's pages are no business of a guest of its own (not built in) */
