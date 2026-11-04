@@ -30,7 +30,7 @@ void arch_vcpu_init(struct hv_vcpu *vcpu, hv_addr_t entry, hv_addr_t stack,
 	vcpu->arch.vstimecmp = ~0UL;
 }
 
-/* the running vCPU's state, into vcpu; its timer stops */
+/* the running vCPU's state, into vcpu */
 void arch_vcpu_save(struct hv_vcpu *vcpu)
 {
 	vcpu->arch.vsstatus = csr_read(vsstatus);
@@ -43,8 +43,6 @@ void arch_vcpu_save(struct hv_vcpu *vcpu)
 	vcpu->arch.vsatp = csr_read(vsatp);
 	vcpu->arch.hvip = csr_read(hvip) & VCPU_HVIP;
 	csr_clear(hvip, VCPU_HVIP);
-	if (vcpu->arch.stime != ~0UL)
-		riscv64_sbi_set_timer(~0UL);
 	if (riscv64_sstc())
 		vcpu->arch.vstimecmp = csr_read(CSR_VSTIMECMP);
 	csr_set(sstatus, SSTATUS_FS);
@@ -63,8 +61,7 @@ void arch_vcpu_load(struct hv_vcpu *vcpu)
 	csr_write(vsatp, vcpu->arch.vsatp);
 	csr_set(hvip, vcpu->arch.hvip);
 	/* a deadline already past goes off at once: VSTIP */
-	if (vcpu->arch.stime != ~0UL)
-		riscv64_sbi_set_timer(vcpu->arch.stime);
+	riscv64_timer_program();
 	if (riscv64_sstc())
 		csr_write(CSR_VSTIMECMP, vcpu->arch.vstimecmp);
 	csr_set(sstatus, SSTATUS_FS);

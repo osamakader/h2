@@ -14,14 +14,44 @@
  *
  * The timer: with Sstc, each vCPU has its own comparator (vstimecmp,
  * which raises its VSTIP by itself), an SBI set_timer only sets it, and
- * a guest that knows Sstc sets it without h2. Without Sstc, h2 forwards
- * set_timer to the firmware and passes the hart's timer interrupt on.
+ * a guest that knows Sstc sets it without h2, and the hart's timer is
+ * h2's tick alone. Without Sstc, one timer in the firmware does for both,
+ * set to whichever comes first of the tick and the running vCPU's
+ * set_timer; when that one is due, h2 passes it on.
  */
 
 #define VS_IRQS		((1UL << IRQ_VS_SOFT) | (1UL << IRQ_VS_TIMER) | \
 			 (1UL << IRQ_VS_EXT))
 
+/* the timer's frequency on qemu virt, the only riscv64 machine so far */
+#define TIMEBASE_HZ	10000000UL
+#define TICK		(TIMEBASE_HZ / HV_TICK_HZ)
+
 static int sstc, said;
+static hv_addr_t tick_at[HV_MAX_CPUS];		/* 0: no tick */
+
+/* the hart's timer, for what comes first */
+void riscv64_timer_program(void)
+{
+	struct hv_vcpu *vcpu = hv_vcpu_current();
+	hv_addr_t when = tick_at[hv_cpu_index()];
+
+	if (!when)
+		when = ~0UL;
+	if (sstc) {
+		csr_write(CSR_STIMECMP, when);
+		return;
+	}
+	if (vcpu && vcpu->arch.stime < when)
+		when = vcpu->arch.stime;
+	riscv64_sbi_set_timer(when);
+}
+
+void arch_tick_start(void)
+{
+	tick_at[hv_cpu_index()] = csr_read(time) + TICK;
+	riscv64_timer_program();
+}
 
 /* the guest's own timer comparator: STCE sticks if the firmware allows it */
 int riscv64_sstc(void)
@@ -40,6 +70,8 @@ void riscv64_virq_init(void)
 	}
 	csr_write(CSR_HTIMEDELTA, 0);
 	riscv64_sbi_set_timer(~0UL);
+	if (sstc)
+		csr_write(CSR_STIMECMP, ~0UL);
 	csr_write(hvip, 0);
 	csr_write(hideleg, VS_IRQS);
 	csr_set(sie, (1UL << IRQ_S_TIMER) | (1UL << IRQ_S_SOFT));
@@ -47,19 +79,30 @@ void riscv64_virq_init(void)
 }
 
 /*
- * The timer the running vCPU set with SBI set_timer went off: disarm it
- * and pass it on. It stays pending for the vCPU until its next set_timer.
+ * The hart's timer went off. The running vCPU's set_timer, if that is
+ * due, is passed on, pending for it until its next set_timer; on a tick
+ * it gives way.
  */
 void riscv64_timer_interrupt(void)
 {
-	riscv64_sbi_set_timer(~0UL);
-	hv_vcpu_current()->arch.stime = ~0UL;
-	csr_set(hvip, 1UL << IRQ_VS_TIMER);
+	struct hv_vcpu *vcpu = hv_vcpu_current();
+	hv_addr_t now = csr_read(time);
+	int me = hv_cpu_index();
+
+	if (!sstc && vcpu->arch.stime <= now) {
+		vcpu->arch.stime = ~0UL;
+		csr_set(hvip, 1UL << IRQ_VS_TIMER);
+	}
+	if (tick_at[me] && tick_at[me] <= now) {
+		tick_at[me] = now + TICK;
+		hv_vcpu_yield();
+	}
+	riscv64_timer_program();
 }
 
 /*
  * The running vCPU sets its timer, which clears the pending one: with
- * Sstc, its comparator; without, h2 forwards the call to the firmware.
+ * Sstc, its comparator; without, the hart's timer follows.
  */
 void riscv64_guest_set_timer(hv_addr_t stime)
 {
@@ -69,6 +112,7 @@ void riscv64_guest_set_timer(hv_addr_t stime)
 	}
 	hv_vcpu_current()->arch.stime = stime;
 	csr_clear(hvip, 1UL << IRQ_VS_TIMER);
+	riscv64_timer_program();
 }
 
 /*
