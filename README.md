@@ -50,6 +50,13 @@ real one); other devices are passed through.
 h2 links at 0x40100000 on arm64 and 0x84000000 on riscv64; the guest must
 fit around it.
 
+`make GUEST2=path/to/kernel.elf` adds a second guest on qemu virt, for now
+a small one: it gets the upper half of RAM (at the same addresses, so give
+the machine twice the `MEM`), one vCPU sharing the boot CPU with the first
+guest, and no devices, and its only way out is h2's calls. A fault stops it
+alone. vCPUs on a CPU take turns on a 10 ms tick, and the first guest's
+interrupts switch to it at once.
+
 [o2](https://github.com/osamakader/o2) boots this way. With o2 built
 next to h2 (`make -C ../o2 ARCH=arm64`):
 
