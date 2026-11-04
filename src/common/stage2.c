@@ -108,6 +108,47 @@ int hv_stage2_guest_range(hv_addr_t start, hv_addr_t size)
 	return size == 0 || !in_hole(start, start + size, &pa);
 }
 
+#define WINDOW_TABLES	4
+
+static uint64_t window_pool[WINDOW_TABLES][PT_ENTRIES] __attribute__((aligned(4096)));
+static int window_used;
+
+static int fill_window(uint64_t *table, int entries, int level, hv_addr_t base,
+		       hv_addr_t ipa, hv_addr_t size, hv_addr_t pa)
+{
+	hv_addr_t step = LEVEL_SIZE(level), a;
+	uint64_t *next;
+	int i;
+
+	for (i = 0; i < entries; i++) {
+		a = base + i * step;
+		if (a + step <= ipa || a >= ipa + size) {
+			table[i] = 0;
+		} else if (a >= ipa && a + step <= ipa + size &&
+			   !((a - ipa + pa) & (step - 1))) {
+			table[i] = arch_stage2_leaf(a - ipa + pa, level);
+		} else {
+			if (level == 0 || window_used == WINDOW_TABLES)
+				return -1;
+			next = window_pool[window_used++];
+			if (fill_window(next, PT_ENTRIES, level - 1, a, ipa, size, pa) < 0)
+				return -1;
+			table[i] = arch_stage2_table(next);
+		}
+	}
+	return 0;
+}
+
+/*
+ * A second guest's tables: only [ipa, ipa + size) mapped, to pa. Once,
+ * page aligned: 0, or -1.
+ */
+int hv_stage2_build_window(uint64_t *root, int entries, hv_addr_t ipa,
+			   hv_addr_t size, hv_addr_t pa)
+{
+	return fill_window(root, entries, ROOT_LEVEL, 0, ipa, size, pa);
+}
+
 /* once, after the holes: 0, or -1 */
 int hv_stage2_build(uint64_t *root, int entries)
 {

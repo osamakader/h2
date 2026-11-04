@@ -13,6 +13,8 @@ void hv_stage2_hole(hv_addr_t start, hv_addr_t end);
 void hv_stage2_remap(hv_addr_t start, hv_addr_t end, hv_addr_t to);
 int hv_stage2_guest_range(hv_addr_t start, hv_addr_t size);
 int hv_stage2_build(uint64_t *root, int entries);
+int hv_stage2_build_window(uint64_t *root, int entries, hv_addr_t ipa,
+			   hv_addr_t size, hv_addr_t pa);
 
 /* the architecture's descriptors */
 uint64_t arch_stage2_leaf(hv_addr_t pa, int level);
