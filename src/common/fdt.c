@@ -105,6 +105,85 @@ int fdt_add_memreserve(void *fdt, uint64_t addr, uint64_t size)
 	return 0;
 }
 
+#define FDT_BEGIN_NODE	1
+#define FDT_END_NODE	2
+#define FDT_PROP	3
+#define FDT_NOP		4
+
+static int str_eq(const void *fdt, uint32_t off, const char *s)
+{
+	const volatile char *p = (const volatile char *)fdt + off;
+
+	while (*s && *p == *s) {
+		p++;
+		s++;
+	}
+	return !*s && !*p;
+}
+
+/*
+ * The first /memory node's reg: its base and size, and where it is (for
+ * fdt_memory_set_size). -1 if there is none, or with other than 64-bit
+ * addresses and sizes (qemu virt's).
+ */
+int fdt_memory(const void *fdt, uint64_t *base, uint64_t *size, uint32_t *reg)
+{
+	uint32_t off = get32(fdt, FDT_OFF_DT_STRUCT);
+	uint32_t strings = get32(fdt, FDT_OFF_DT_STRINGS);
+	uint32_t token, len, name, n;
+	int depth = 0, in_memory = 0, cells = 0;
+	const volatile char *c;
+
+	for (;;) {
+		token = get32(fdt, off);
+		off += 4;
+		switch (token) {
+		case FDT_BEGIN_NODE:
+			depth++;
+			c = (const volatile char *)fdt + off;
+			in_memory = depth == 2 && c[0] == 'm' && c[1] == 'e' &&
+				    c[2] == 'm' && c[3] == 'o' && c[4] == 'r' &&
+				    c[5] == 'y' && (c[6] == '@' || !c[6]);
+			for (n = 0; c[n]; n++)
+				;
+			off += (n + 4) & ~3U;
+			break;
+		case FDT_END_NODE:
+			depth--;
+			in_memory = 0;
+			break;
+		case FDT_PROP:
+			len = get32(fdt, off);
+			name = strings + get32(fdt, off + 4);
+			off += 8;
+			if (depth == 1 && len == 4 &&
+			    (str_eq(fdt, name, "#address-cells") ||
+			     str_eq(fdt, name, "#size-cells")) &&
+			    get32(fdt, off) == 2)
+				cells++;
+			if (in_memory && str_eq(fdt, name, "reg")) {
+				if (cells != 2 || len < 16)
+					return -1;
+				*base = get64(fdt, off);
+				*size = get64(fdt, off + 8);
+				*reg = off;
+				return 0;
+			}
+			off += (len + 3) & ~3U;
+			break;
+		case FDT_NOP:
+			break;
+		default:
+			return -1;
+		}
+	}
+}
+
+void fdt_memory_set_size(void *fdt, uint32_t reg, uint64_t size)
+{
+	put64(fdt, reg + 8, size);
+}
+
 /*
  * Copy the blob's used bytes (fdt_used()) to to, as a blob of size bytes:
  * the rest is free space at the end, for fdt_add_memreserve(). The two
