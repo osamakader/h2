@@ -21,6 +21,7 @@ static void zero(void *p, hv_addr_t size)
  * A vCPU for physical CPU cpu, which enters entry with the MMU off, its
  * stack pointer at stack and arguments arg0, arg1 (x0 / a0, a1), in
  * cpu's ring after the one it runs. Only cpu itself changes its ring.
+ * vCPUs take turns: when one yields, and on each tick.
  * 0 if there is no room.
  */
 struct hv_vcpu *hv_vcpu_new(int cpu, hv_addr_t entry, hv_addr_t stack,
@@ -45,6 +46,9 @@ struct hv_vcpu *hv_vcpu_new(int cpu, hv_addr_t entry, hv_addr_t stack,
 	arch_vcpu_init(vcpu, entry, stack, arg0, arg1);
 
 	if (current[cpu]) {
+		/* a CPU with one vCPU has no tick: from now on it needs one */
+		if (current[cpu]->next == current[cpu])
+			arch_tick_start();
 		vcpu->next = current[cpu]->next;
 		current[cpu]->next = vcpu;
 	} else {
