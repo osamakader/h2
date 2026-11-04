@@ -397,6 +397,9 @@ static void vline_resample(struct arm64_vgic *vgic)
 	unsigned int intid;
 	int i, here = hv_cpu_index();
 
+	/* the lines are guest 0's */
+	if (hv_vcpu_current()->guest->id)
+		return;
 	for (i = 0; i < nvlines; i++) {
 		intid = vlines[i].intid;
 		if (!vlines[i].level ||
@@ -442,8 +445,14 @@ static void refill(struct arm64_vgic *vgic)
 	hcr_put(HCR_EN | (full ? HCR_UIE : 0));
 }
 
-static void inject(struct arm64_vgic *vgic, uint64_t lr)
+/*
+ * To vcpu on this CPU, the running one or not: one that isn't finds it
+ * in its queue when it loads, and runs next.
+ */
+static void inject(struct hv_vcpu *vcpu, uint64_t lr)
 {
+	struct arm64_vgic *vgic = &vcpu->arch.vgic;
+
 	if (vgic->queued == ARM64_VGIC_QUEUE) {
 		/* a level interrupt comes back; an SGI is lost */
 		if (lr & LR_HW)
@@ -454,7 +463,10 @@ static void inject(struct arm64_vgic *vgic, uint64_t lr)
 		return;
 	}
 	vgic->queue[vgic->queued++] = lr;
-	refill(vgic);
+	if (vcpu == hv_vcpu_current())
+		refill(vgic);
+	else
+		hv_vcpu_yield();
 }
 
 /*
@@ -486,16 +498,23 @@ void hv_virq_line(unsigned int irq, int level)
 	vlines[i].level = level;
 	hv_mb();
 
-	vgic = &hv_vcpu_current()->arch.vgic;
-	refill(vgic);
-	if (cpu >= 0 && cpu != hv_cpu_index())
+	if (cpu >= 0 && cpu != hv_cpu_index()) {
 		kick(cpu);
+	} else if (hv_vcpu_current()->guest->id) {
+		/* guest 0's, and another guest runs: it'd better be next */
+		if (level)
+			hv_vcpu_yield();
+	} else {
+		vgic = &hv_vcpu_current()->arch.vgic;
+		refill(vgic);
+	}
 }
 
 /* a physical IRQ, taken from the guest: on to the running vCPU */
 void arm64_handle_irq(struct hv_trap_frame *frame)
 {
-	struct arm64_vgic *vgic = &hv_vcpu_current()->arch.vgic;
+	struct hv_vcpu *vcpu = hv_vcpu_current(), *owner;
+	struct arm64_vgic *vgic = &vcpu->arch.vgic;
 	uint64_t iar = ack(), intid, lr;
 
 	intid = gic3 ? iar & 0xffffff : iar & 0x3ff;
@@ -520,9 +539,19 @@ void arm64_handle_irq(struct hv_trap_frame *frame)
 			deactivate(iar);
 			if (!gic3)
 				lr |= (iar >> 10 & 7) << LR_PINTID_SHIFT;
-			inject(vgic, lr);
+			owner = hv_vcpu_owner();
+			if (owner)
+				inject(owner, lr);
+		} else if (intid < 32) {
+			/* the CPU's own: the running vCPU's timers */
+			inject(vcpu, lr | LR_HW | intid << LR_PINTID_SHIFT);
 		} else {
-			inject(vgic, lr | LR_HW | intid << LR_PINTID_SHIFT);
+			/* a device's: guest 0's, if it has a vCPU here at all */
+			owner = hv_vcpu_owner();
+			if (owner)
+				inject(owner, lr | LR_HW | intid << LR_PINTID_SHIFT);
+			else
+				deactivate(iar);
 		}
 	}
 
@@ -540,6 +569,12 @@ int arm64_vgic_sysreg(struct hv_trap_frame *frame)
 
 	if (!gic3 || (iss & ISS_READ))
 		return 0;
+
+	/* no SGIs from guests without devices: they have nobody to tell */
+	if (hv_vcpu_current()->guest->id) {
+		frame->pc += 4;
+		return 1;
+	}
 
 	switch (iss & ISS_SYSREG_MASK) {
 	case ISS_SYSREG(3, 0, 12, 11, 5):

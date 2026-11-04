@@ -154,8 +154,17 @@ void riscv64_soft_interrupt(void)
 		kicked[me] = 0;
 		kick = 1;
 	}
-	if (guest || !kick)
-		csr_set(hvip, 1UL << IRQ_VS_SOFT);
+	if (guest || !kick) {
+		/* guest 0's: to the vCPU it has here */
+		struct hv_vcpu *owner = hv_vcpu_owner();
+
+		if (owner == hv_vcpu_current()) {
+			csr_set(hvip, 1UL << IRQ_VS_SOFT);
+		} else if (owner) {
+			owner->arch.hvip |= 1UL << IRQ_VS_SOFT;
+			hv_vcpu_yield();
+		}
+	}
 	if (kick)
 		riscv64_external_sync();
 }

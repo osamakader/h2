@@ -4,6 +4,7 @@
 #include <hv/cpu.h>
 #include <hv/hv.h>
 #include <hv/mmio.h>
+#include <hv/vcpu.h>
 
 /*
  * External interrupts for the guest. The hart's supervisor external
@@ -69,8 +70,14 @@ static unsigned int vsrc_ready(unsigned int ctx)
 void riscv64_external_sync(void)
 {
 	int seip = (csr_read(sip) & (1UL << IRQ_S_EXT)) != 0;
+	struct hv_vcpu *vcpu = hv_vcpu_current();
 
-	if (seip || (vsrc_level && vsrc_ready(this_context())))
+	/* only guest 0's; while another guest runs, it had better be next */
+	if (vcpu && vcpu->guest->id) {
+		csr_clear(hvip, 1UL << IRQ_VS_EXT);
+		if (seip || (vsrc_level && vsrc_ready(this_context())))
+			hv_vcpu_yield();
+	} else if (seip || (vsrc_level && vsrc_ready(this_context())))
 		csr_set(hvip, 1UL << IRQ_VS_EXT);
 	else
 		csr_clear(hvip, 1UL << IRQ_VS_EXT);
