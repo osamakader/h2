@@ -1,4 +1,5 @@
 #include <arch/stage2.h>
+#include <hv/guest.h>
 #include <hv/hv.h>
 #include <hv/stage2.h>
 
@@ -31,7 +32,10 @@
 #define ID_AA64MMFR0_PARANGE(v)	((v) & 0xf)
 #define PARANGE_40BIT		2
 
+#define VTTBR_VMID_SHIFT	48
+
 static uint64_t root[ROOT_ENTRIES] __attribute__((aligned(4096)));
+static uint64_t root2[ROOT_ENTRIES] __attribute__((aligned(4096)));
 
 uint64_t arch_stage2_leaf(hv_addr_t pa, int level)
 {
@@ -53,7 +57,23 @@ int arm64_stage2_init(void)
 		hv_console_write("h2: stage 2: physical addresses under 40 bits\n");
 		return -1;
 	}
+	hv_guests[0].stage2 = (hv_addr_t)root;
 	return hv_stage2_build(root, ROOT_ENTRIES);
+}
+
+/* the second guest's: its window */
+int arch_stage2_window(struct hv_guest *guest)
+{
+	guest->stage2 = (hv_addr_t)root2 | (uint64_t)guest->id << VTTBR_VMID_SHIFT;
+	return hv_stage2_build_window(root2, ROOT_ENTRIES, guest->ram_base,
+				      guest->ram_size,
+				      guest->ram_base + guest->pa_offset);
+}
+
+/* VMIDs tell their TLB entries apart: no flush */
+void arch_stage2_load(const struct hv_guest *guest)
+{
+	__asm__ volatile("msr VTTBR_EL2, %0; isb" :: "r"(guest->stage2) : "memory");
 }
 
 /* per CPU, before HCR_EL2.VM turns it on */

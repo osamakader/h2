@@ -2,6 +2,7 @@
 #include <arch/sbi.h>
 #include <arch/trap.h>
 #include <arch/virq.h>
+#include <arch/vplic.h>
 #include <hv/vcpu.h>
 
 #define HSTATUS_SPV	(1UL << 7)
@@ -49,8 +50,14 @@ void arch_vcpu_save(struct hv_vcpu *vcpu)
 	riscv64_fp_save(&vcpu->arch.fp);
 }
 
+void arch_cpu_idle(void)
+{
+	__asm__ volatile("wfi");
+}
+
 void arch_vcpu_load(struct hv_vcpu *vcpu)
 {
+	arch_stage2_load(vcpu->guest);
 	csr_write(vsstatus, vcpu->arch.vsstatus);
 	csr_write(vsie, vcpu->arch.vsie);
 	csr_write(vstvec, vcpu->arch.vstvec);
@@ -66,6 +73,8 @@ void arch_vcpu_load(struct hv_vcpu *vcpu)
 		csr_write(CSR_VSTIMECMP, vcpu->arch.vstimecmp);
 	csr_set(sstatus, SSTATUS_FS);
 	riscv64_fp_load(&vcpu->arch.fp);
+	/* VSEIP is only for guest 0 */
+	riscv64_external_sync();
 	/* sret goes to VS-mode */
 	csr_set(hstatus, HSTATUS_SPV | HSTATUS_SPVP);
 }

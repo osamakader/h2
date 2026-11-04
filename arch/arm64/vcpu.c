@@ -71,8 +71,14 @@ void arch_vcpu_save(struct hv_vcpu *vcpu)
 	arm64_vgic_save(&vcpu->arch.vgic);
 }
 
+void arch_cpu_idle(void)
+{
+	__asm__ volatile("wfi");
+}
+
 void arch_vcpu_load(struct hv_vcpu *vcpu)
 {
+	arch_stage2_load(vcpu->guest);
 	LOAD(SCTLR_EL1, sctlr_el1);
 	LOAD(CPACR_EL1, cpacr_el1);
 	LOAD(TTBR0_EL1, ttbr0_el1);

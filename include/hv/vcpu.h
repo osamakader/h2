@@ -2,6 +2,7 @@
 #define HV_VCPU_H
 
 #include <arch/vcpu.h>
+#include <hv/guest.h>
 #include <hv/hv.h>
 
 /*
@@ -14,16 +15,21 @@ struct hv_vcpu {
 	struct hv_trap_frame frame;
 	struct arch_vcpu arch;
 	int used;
+	struct hv_guest *guest;
 	int cpu;			/* the physical CPU's slot */
 	struct hv_vcpu *next;		/* in that CPU's ring */
 };
 
 struct hv_vcpu *hv_vcpu_new(int cpu, hv_addr_t entry, hv_addr_t stack,
 			    hv_addr_t arg0, hv_addr_t arg1);
+struct hv_vcpu *hv_vcpu_new_in(struct hv_guest *guest, int cpu, hv_addr_t entry,
+			       hv_addr_t stack, hv_addr_t arg0, hv_addr_t arg1);
 __attribute__((noreturn)) void hv_vcpu_run(struct hv_vcpu *vcpu);
 struct hv_vcpu *hv_vcpu_current(void);
 struct hv_vcpu *hv_vcpu_first(void);
+struct hv_vcpu *hv_vcpu_owner(void);
 void hv_vcpu_yield(void);
+void hv_vcpu_stop(void);
 void hv_vcpu_trap_done(struct hv_trap_frame *frame);
 
 /* the architecture's part */
@@ -31,6 +37,8 @@ void arch_vcpu_init(struct hv_vcpu *vcpu, hv_addr_t entry, hv_addr_t stack,
 		    hv_addr_t arg0, hv_addr_t arg1);
 void arch_vcpu_load(struct hv_vcpu *vcpu);
 void arch_vcpu_save(struct hv_vcpu *vcpu);
+/* wait for an interrupt, with h2's masked: nothing to run */
+void arch_cpu_idle(void);
 /* this CPU's next tick, which makes the running vCPU give way */
 void arch_tick_start(void);
 /* this CPU's TLB entries for the guest's own translations (stage 1) */

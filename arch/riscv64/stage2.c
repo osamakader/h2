@@ -1,5 +1,6 @@
 #include <arch/csr.h>
 #include <arch/stage2.h>
+#include <hv/guest.h>
 #include <hv/hv.h>
 #include <hv/stage2.h>
 
@@ -23,8 +24,10 @@
 #define HGATP_MODE_SV39X4	(8UL << 60)
 #define HGATP_MODE_MASK		(0xfUL << 60)
 
+#define HGATP_VMID_SHIFT	44
+
 static uint64_t root[ROOT_ENTRIES] __attribute__((aligned(16384)));
-static unsigned long hgatp;
+static uint64_t root2[ROOT_ENTRIES] __attribute__((aligned(16384)));
 
 uint64_t arch_stage2_leaf(hv_addr_t pa, int level)
 {
@@ -42,14 +45,38 @@ int riscv64_stage2_init(void)
 {
 	if (hv_stage2_build(root, ROOT_ENTRIES) < 0)
 		return -1;
-	hgatp = HGATP_MODE_SV39X4 | ((hv_addr_t)root >> 12);
+	hv_guests[0].stage2 = HGATP_MODE_SV39X4 | ((hv_addr_t)root >> 12);
 	return 0;
+}
+
+/*
+ * The second guest's: its window. Without VMIDs (VMIDLEN 0), which tell
+ * the two guests' TLB entries apart, no second guest.
+ */
+int arch_stage2_window(struct hv_guest *guest)
+{
+	unsigned long vmid = (unsigned long)guest->id << HGATP_VMID_SHIFT, got;
+
+	csr_write(hgatp, HGATP_MODE_SV39X4 | vmid);
+	got = csr_read(hgatp);
+	csr_write(hgatp, 0);
+	if (!(got & vmid))
+		return -1;
+	guest->stage2 = HGATP_MODE_SV39X4 | vmid | ((hv_addr_t)root2 >> 12);
+	return hv_stage2_build_window(root2, ROOT_ENTRIES, guest->ram_base,
+				      guest->ram_size,
+				      guest->ram_base + guest->pa_offset);
+}
+
+void arch_stage2_load(const struct hv_guest *guest)
+{
+	csr_write(hgatp, guest->stage2);
 }
 
 /* per hart, before entering the guest */
 void riscv64_stage2_enable(void)
 {
-	csr_write(hgatp, hgatp);
+	csr_write(hgatp, hv_guests[0].stage2);
 	__asm__ volatile("hfence.gvma zero, zero" ::: "memory");
 }
 
