@@ -4,6 +4,7 @@
 #include <arch/trap.h>
 #include <hv/cpu.h>
 #include <hv/hv.h>
+#include <hv/vcpu.h>
 
 /*
  * SBI for the guest: h2's own extension, and everything else forwarded
@@ -18,6 +19,9 @@
 #define SBI_EXT_TIME		0x54494d45UL	/* "TIME" */
 #define SBI_TIME_SET_TIMER	0
 #define SBI_EXT_LEGACY_SEND_IPI	0x04UL
+#define SBI_EXT_LEGACY_SHUTDOWN	0x08UL
+#define SBI_EXT_BASE		0x10UL
+#define SBI_EXT_SRST		0x53525354UL	/* "SRST" */
 #define SBI_EXT_IPI		0x735049UL	/* "sPI" */
 #define SBI_IPI_SEND_IPI	0
 #define SBI_EXT_HSM		0x48534dUL	/* "HSM" */
@@ -143,6 +147,34 @@ static int sbi_unsupported(hv_addr_t ext, hv_addr_t fid)
 	return ext == SBI_EXT_SUSP;
 }
 
+/*
+ * A guest without the machine: its timer, what the firmware is, local
+ * fences; it can stop itself.
+ */
+static void sbi_guest(hv_addr_t *a, hv_addr_t ext, hv_addr_t fid)
+{
+	struct sbiret fw;
+
+	if ((ext == SBI_EXT_TIME && fid == SBI_TIME_SET_TIMER) ||
+	    ext == SBI_EXT_LEGACY_SET_TIMER) {
+		riscv64_guest_set_timer(a[0]);
+		a[0] = 0;
+	} else if (ext == SBI_EXT_BASE) {
+		fw = firmware_ecall(a);
+		a[0] = fw.error;
+		a[1] = fw.value;
+	} else if (ext == SBI_EXT_RFNC && fid < SBI_RFNC_HFENCE_FIRST) {
+		/* it has one hart */
+		__asm__ volatile("hfence.vvma zero, zero" ::: "memory");
+		a[0] = 0;
+	} else if (ext == SBI_EXT_SRST || ext == SBI_EXT_LEGACY_SHUTDOWN) {
+		hv_console_write("h2: a guest stopped\n");
+		hv_vcpu_stop();
+	} else {
+		a[0] = (hv_addr_t)SBI_ERR_NOT_SUPPORTED;
+	}
+}
+
 void riscv64_sbi_call(struct hv_trap_frame *frame)
 {
 	hv_addr_t *a = &frame->regs[A(0)];
@@ -155,6 +187,11 @@ void riscv64_sbi_call(struct hv_trap_frame *frame)
 		a[0] = ret.error == HV_ENOSYS ? (hv_addr_t)SBI_ERR_NOT_SUPPORTED :
 		       ret.error ? (hv_addr_t)SBI_ERR_FAILED : 0;
 		a[1] = ret.value;
+		return;
+	}
+
+	if (hv_vcpu_current()->guest->id) {
+		sbi_guest(a, ext, fid);
 		return;
 	}
 

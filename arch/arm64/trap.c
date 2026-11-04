@@ -110,8 +110,11 @@ void arm64_handle_trap(struct hv_trap_frame *frame)
 			hv_console_putchar('\n');
 		}
 		hv_console_unlock();
-		for (;;)
-			__asm__ volatile("wfe");
+		if (!hv_vcpu_current()->guest->id)
+			for (;;)
+				__asm__ volatile("wfe");
+		hv_console_write("h2: a guest stopped\n");
+		hv_vcpu_stop();
 	}
 
 	hv_vcpu_trap_done(frame);

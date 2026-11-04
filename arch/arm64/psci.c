@@ -3,6 +3,7 @@
 #include <arch/trap.h>
 #include <hv/cpu.h>
 #include <hv/hv.h>
+#include <hv/vcpu.h>
 
 /*
  * PSCI for the guest. h2 forwards calls to the firmware's PSCI, through
@@ -10,7 +11,11 @@
  * CPU_ON starts the CPU in h2 at EL2, which then enters the guest.
  */
 
+#define PSCI_VERSION		0x00
 #define PSCI_CPU_SUSPEND	0x01
+#define PSCI_CPU_OFF		0x02
+#define PSCI_SYSTEM_OFF		0x08
+#define PSCI_SYSTEM_RESET	0x09
 #define PSCI_CPU_ON		0x03
 #define PSCI_FEATURES		0x0a
 #define PSCI_SYSTEM_SUSPEND	0x0e
@@ -79,6 +84,25 @@ static int psci_unsupported(uint32_t fid)
 	}
 }
 
+/* a guest without the machine: it can only stop itself */
+static void psci_guest(hv_addr_t *x)
+{
+	switch (SMCCC_NUMBER((uint32_t)x[0])) {
+	case PSCI_VERSION:
+		x[0] = firmware_smc(x[0], 0, 0, 0);
+		break;
+	case PSCI_CPU_OFF:
+	case PSCI_SYSTEM_OFF:
+	case PSCI_SYSTEM_RESET:
+		hv_console_write("h2: a guest stopped\n");
+		hv_vcpu_stop();
+		break;
+	default:
+		x[0] = (hv_addr_t)PSCI_RET_DENIED;
+		break;
+	}
+}
+
 int arm64_psci_call(struct hv_trap_frame *frame)
 {
 	uint32_t fid = (uint32_t)frame->regs[0];
@@ -86,6 +110,11 @@ int arm64_psci_call(struct hv_trap_frame *frame)
 
 	if (SMCCC_NUMBER(fid) > PSCI_LAST)
 		return 0;
+
+	if (hv_vcpu_current()->guest->id) {
+		psci_guest(x);
+		return 1;
+	}
 
 	if (psci_unsupported(fid) ||
 	    (SMCCC_NUMBER(fid) == PSCI_FEATURES && psci_unsupported((uint32_t)x[1])))

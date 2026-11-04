@@ -1,6 +1,7 @@
 #include <hv/hv.h>
 #include <hv/mmio.h>
 #include <hv/stage2.h>
+#include <hv/vcpu.h>
 
 #define MMIO_MAX	8
 #define PAGE_SIZE	0x1000UL
@@ -58,6 +59,13 @@ int hv_mmio_emulate(hv_addr_t gpa, int size, int write, uint64_t *value)
 {
 	const struct hv_mmio_dev *dev;
 	int i;
+
+	/* the devices are guest 0's; another guest finds nothing there */
+	if (hv_vcpu_current()->guest->id) {
+		if (!write)
+			*value = 0;
+		return 1;
+	}
 
 	for (i = 0; i < ndevs; i++) {
 		dev = devs[i];
