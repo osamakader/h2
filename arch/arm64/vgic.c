@@ -32,6 +32,7 @@
 
 #define MAINT_INTID		25	/* PPI 9, on both platforms */
 #define KICK_INTID		15	/* an SGI h2 keeps for itself */
+#define TICK_INTID		26	/* PPI 10: CNTHP, h2's own timer */
 #define SPURIOUS(id)		((id) >= 1020 && (id) < 1024)
 #define LPI_FIRST		8192
 
@@ -506,6 +507,11 @@ void arm64_handle_irq(struct hv_trap_frame *frame)
 		if (intid == MAINT_INTID || intid == KICK_INTID) {
 			deactivate(iar);
 			refill(vgic);
+		} else if (intid == TICK_INTID) {
+			/* the next one first: that takes the line down */
+			arch_tick_start();
+			deactivate(iar);
+			hv_vcpu_yield();
 		} else if (hv_mmio_phys_irq((unsigned int)intid)) {
 			/* an emulated device's real one: h2's */
 			deactivate(iar);
@@ -710,14 +716,14 @@ void arm64_vgic_cpu_init(void)
 		}
 		ppi_regs[hv_cpu_index()] = rd + GICR_SGI_BASE;
 		*mmio(rd + GICR_SGI_BASE + GICx_IGROUPR0) |=
-			1U << MAINT_INTID | 1U << KICK_INTID;
+			1U << MAINT_INTID | 1U << KICK_INTID | 1U << TICK_INTID;
 	} else {
 		*mmio(PLATFORM_GICC + GICC_PMR) = 0xff;
 		*mmio(PLATFORM_GICC + GICC_CTLR) = GICC_CTLR_ENABLE | GICC_CTLR_EOIMODE;
 		ppi_regs[hv_cpu_index()] = PLATFORM_GICD;
 	}
 	*mmio(ppi_regs[hv_cpu_index()] + GICx_ISENABLER0) =
-		1U << MAINT_INTID | 1U << KICK_INTID;
+		1U << MAINT_INTID | 1U << KICK_INTID | 1U << TICK_INTID;
 	for (i = 0; i < nr_lrs; i++)
 		lr_put(i, 0);
 	hcr_put(0);

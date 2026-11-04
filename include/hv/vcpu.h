@@ -31,6 +31,8 @@ void arch_vcpu_init(struct hv_vcpu *vcpu, hv_addr_t entry, hv_addr_t stack,
 		    hv_addr_t arg0, hv_addr_t arg1);
 void arch_vcpu_load(struct hv_vcpu *vcpu);
 void arch_vcpu_save(struct hv_vcpu *vcpu);
+/* this CPU's next tick, which makes the running vCPU give way */
+void arch_tick_start(void);
 /* this CPU's TLB entries for the guest's own translations (stage 1) */
 void arch_vcpu_flush_tlb(void);
 /* copy frame to the top of this CPU's h2 stack and return from a trap */

@@ -107,6 +107,16 @@ void arch_vcpu_load(struct hv_vcpu *vcpu)
 	__asm__ volatile("isb" ::: "memory");
 }
 
+/* EL2's own timer, CNTHP (PPI 10): its interrupt comes to h2 */
+void arch_tick_start(void)
+{
+	unsigned long freq;
+
+	__asm__ volatile("mrs %0, CNTFRQ_EL0" : "=r"(freq));
+	__asm__ volatile("msr CNTHP_TVAL_EL2, %0" :: "r"(freq / HV_TICK_HZ));
+	__asm__ volatile("msr CNTHP_CTL_EL2, %0; isb" :: "r"(1UL));
+}
+
 void arch_vcpu_flush_tlb(void)
 {
 	__asm__ volatile("dsb nshst; tlbi vmalle1; dsb nsh; isb" ::: "memory");
