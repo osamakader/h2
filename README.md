@@ -53,8 +53,9 @@ fit around it.
 `make GUEST2=path/to/kernel.elf` adds a second guest on qemu virt, for now
 a small one: it gets the upper half of RAM (at the same addresses, so give
 the machine twice the `MEM`), one vCPU sharing the boot CPU with the first
-guest, and no devices, and its only way out is h2's calls. A fault stops it
-alone. vCPUs on a CPU take turns on a 10 ms tick, and the first guest's
+guest (more with h2's vcpu_start call, on that CPU), its own interrupt
+controller, timers and SGIs or IPIs, but no other devices. It can't touch the
+first guest's interrupts, and a fault stops it alone. vCPUs on a CPU take turns on a 10 ms tick, and the first guest's
 interrupts switch to it at once.
 
 [o2](https://github.com/osamakader/o2) boots this way. With o2 built
@@ -78,11 +79,12 @@ make ARCH=arm64 GPU=1 GUI=1 run-o2
 Interrupts reach the guest through h2. On arm64 h2 takes the physical
 IRQs and gives them to the guest through the GIC's virtual CPU interface
 (list registers; GICv3, or GICv2 with the guest's GICC shown GICV), so
-each vCPU has its own timer interrupts; the distributor is still the
-guest's. On riscv64 the guest gets its timer, IPIs and external
+each vCPU has its own timer interrupts. The distributor and redistributors
+are h2's too: each guest programs an emulated one of its own, and its SGIs
+are virtual. On riscv64 the guest gets its timer, IPIs and external
 interrupts from h2 (hvip); with Sstc its timer is its own comparator
-(`vstimecmp`), set without leaving the guest; its PLIC claims and
-completions trap to h2.
+(`vstimecmp`), set without leaving the guest; each guest has an emulated
+PLIC of its own, and h2 claims the real interrupts.
 
 ## Raspberry Pi 4
 
