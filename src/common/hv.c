@@ -84,10 +84,11 @@ struct hv_hcall_ret hv_hypercall(hv_addr_t nr, hv_addr_t arg0, hv_addr_t arg1)
 		hv_vcpu_yield();
 		break;
 	case HV_HCALL_VCPU_START:
-		/* sharing this CPU, and the guest's memory */
-		vcpu = hv_vcpu_new(hv_cpu_index(), arg0, 0,
-				   ARCH_VCPU_START_ARGS(hv_cpus[hv_cpu_index()].hwid,
-							arg1));
+		/* sharing this CPU, and the calling guest's memory */
+		vcpu = hv_vcpu_new_in(hv_vcpu_current()->guest,
+				      hv_cpu_index(), arg0, 0,
+				      ARCH_VCPU_START_ARGS(hv_cpus[hv_cpu_index()].hwid,
+							   arg1));
 		if (vcpu)
 			ret.value = (hv_addr_t)(vcpu - hv_vcpu_first());
 		else
