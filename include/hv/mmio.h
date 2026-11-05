@@ -20,6 +20,7 @@ struct hv_mmio_dev {
 	void (*write)(void *ctx, hv_addr_t offset, int size, uint64_t value);
 	unsigned int phys_irq;			/* 0: none */
 	void (*irq)(void *ctx);
+	int all_guests;				/* else guest 0's alone */
 };
 
 /* before stage 2 is built: 0, or -1 if there is no room */
@@ -28,6 +29,9 @@ int hv_mmio_register(const struct hv_mmio_dev *dev);
 int hv_mmio_emulate(hv_addr_t gpa, int size, int write, uint64_t *value);
 /* a physical interrupt: 1 if a device owns it, now handled */
 int hv_mmio_phys_irq(unsigned int irq);
+
+/* the architecture's: a device owns a real interrupt from now on */
+void arch_irq_own(unsigned int irq);
 
 /* a device's interrupt line, as the guest's interrupt controller sees it */
 void hv_virq_line(unsigned int irq, int level);

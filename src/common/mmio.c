@@ -60,15 +60,13 @@ int hv_mmio_emulate(hv_addr_t gpa, int size, int write, uint64_t *value)
 	const struct hv_mmio_dev *dev;
 	int i;
 
-	/* the devices are guest 0's; another guest finds nothing there */
-	if (hv_vcpu_current()->guest->id) {
-		if (!write)
-			*value = 0;
-		return 1;
-	}
+	int other = hv_vcpu_current()->guest->id != 0;
 
 	for (i = 0; i < ndevs; i++) {
 		dev = devs[i];
+		/* most are guest 0's */
+		if (other && !dev->all_guests)
+			continue;
 		if (gpa < PAGE_DOWN(dev->base) ||
 		    gpa >= PAGE_UP(dev->base + dev->size))
 			continue;
@@ -83,6 +81,12 @@ int hv_mmio_emulate(hv_addr_t gpa, int size, int write, uint64_t *value)
 		} else {
 			*value = dev->read(dev->ctx, gpa - dev->base, size);
 		}
+		return 1;
+	}
+	/* another guest finds nothing there */
+	if (other) {
+		if (!write)
+			*value = 0;
 		return 1;
 	}
 	return 0;
