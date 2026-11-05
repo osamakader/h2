@@ -108,45 +108,70 @@ int hv_stage2_guest_range(hv_addr_t start, hv_addr_t size)
 	return size == 0 || !in_hole(start, start + size, &pa);
 }
 
-#define WINDOW_TABLES	4
+#define WINDOW_TABLES	6
+#define MAX_WINDOWS	2
 
 static uint64_t window_pool[WINDOW_TABLES][PT_ENTRIES] __attribute__((aligned(4096)));
-static int window_used;
+static int window_used, nwindows;
+static struct {
+	hv_addr_t ipa, size, pa;
+} windows[MAX_WINDOWS];
 
-static int fill_window(uint64_t *table, int entries, int level, hv_addr_t base,
-		       hv_addr_t ipa, hv_addr_t size, hv_addr_t pa)
+static int fill_windows(uint64_t *table, int entries, int level, hv_addr_t base)
 {
 	hv_addr_t step = LEVEL_SIZE(level), a;
 	uint64_t *next;
-	int i;
+	int i, w, in, split;
 
 	for (i = 0; i < entries; i++) {
 		a = base + i * step;
-		if (a + step <= ipa || a >= ipa + size) {
-			table[i] = 0;
-		} else if (a >= ipa && a + step <= ipa + size &&
-			   !((a - ipa + pa) & (step - 1))) {
-			table[i] = arch_stage2_leaf(a - ipa + pa, level);
-		} else {
+		in = -1;
+		split = 0;
+		for (w = 0; w < nwindows; w++) {
+			if (a + step <= windows[w].ipa ||
+			    a >= windows[w].ipa + windows[w].size)
+				continue;
+			if (a >= windows[w].ipa &&
+			    a + step <= windows[w].ipa + windows[w].size &&
+			    !((a - windows[w].ipa + windows[w].pa) & (step - 1)))
+				in = w;
+			else
+				split = 1;
+		}
+		if (split) {
 			if (level == 0 || window_used == WINDOW_TABLES)
 				return -1;
 			next = window_pool[window_used++];
-			if (fill_window(next, PT_ENTRIES, level - 1, a, ipa, size, pa) < 0)
+			if (fill_windows(next, PT_ENTRIES, level - 1, a) < 0)
 				return -1;
 			table[i] = arch_stage2_table(next);
+		} else if (in >= 0) {
+			table[i] = arch_stage2_leaf(a - windows[in].ipa +
+						    windows[in].pa, level);
+		} else {
+			table[i] = 0;
 		}
 	}
 	return 0;
 }
 
 /*
- * A second guest's tables: only [ipa, ipa + size) mapped, to pa. Once,
- * page aligned: 0, or -1.
+ * A second guest's tables show only windows: [ipa, ipa + size) at pa,
+ * page aligned. Add them, then build, once: 0, or -1.
  */
-int hv_stage2_build_window(uint64_t *root, int entries, hv_addr_t ipa,
-			   hv_addr_t size, hv_addr_t pa)
+void hv_stage2_window_add(hv_addr_t ipa, hv_addr_t size, hv_addr_t pa)
 {
-	return fill_window(root, entries, ROOT_LEVEL, 0, ipa, size, pa);
+	if (nwindows < MAX_WINDOWS) {
+		windows[nwindows].ipa = ipa;
+		windows[nwindows].size = size;
+		windows[nwindows].pa = pa;
+		nwindows++;
+	}
+}
+
+int hv_stage2_build_windows(uint64_t *root, int entries)
+{
+	return fill_windows(root, entries, ROOT_LEVEL, 0);
 }
 
 /* once, after the holes: 0, or -1 */

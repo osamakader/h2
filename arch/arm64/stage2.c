@@ -65,9 +65,9 @@ int arm64_stage2_init(void)
 int arch_stage2_window(struct hv_guest *guest)
 {
 	guest->stage2 = (hv_addr_t)root2 | (uint64_t)guest->id << VTTBR_VMID_SHIFT;
-	return hv_stage2_build_window(root2, ROOT_ENTRIES, guest->ram_base,
-				      guest->ram_size,
-				      guest->ram_base + guest->pa_offset);
+	hv_stage2_window_add(guest->ram_base, guest->ram_size,
+			     guest->ram_base + guest->pa_offset);
+	return hv_stage2_build_windows(root2, ROOT_ENTRIES);
 }
 
 /* VMIDs tell their TLB entries apart: no flush */

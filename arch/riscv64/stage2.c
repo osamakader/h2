@@ -63,9 +63,9 @@ int arch_stage2_window(struct hv_guest *guest)
 	if (!(got & vmid))
 		return -1;
 	guest->stage2 = HGATP_MODE_SV39X4 | vmid | ((hv_addr_t)root2 >> 12);
-	return hv_stage2_build_window(root2, ROOT_ENTRIES, guest->ram_base,
-				      guest->ram_size,
-				      guest->ram_base + guest->pa_offset);
+	hv_stage2_window_add(guest->ram_base, guest->ram_size,
+			     guest->ram_base + guest->pa_offset);
+	return hv_stage2_build_windows(root2, ROOT_ENTRIES);
 }
 
 void arch_stage2_load(const struct hv_guest *guest)
