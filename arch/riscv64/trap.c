@@ -22,7 +22,7 @@ void riscv64_handle_trap(struct hv_trap_frame *frame)
 		riscv64_timer_interrupt();
 		break;
 	case RISCV_CAUSE_INTERRUPT | IRQ_S_EXT:
-		riscv64_external_sync();
+		riscv64_external_interrupt();
 		break;
 	case RISCV_CAUSE_LOAD_GUEST_PAGE_FAULT:
 	case RISCV_CAUSE_STORE_GUEST_PAGE_FAULT:

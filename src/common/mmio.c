@@ -19,6 +19,8 @@ int hv_mmio_register(const struct hv_mmio_dev *dev)
 	}
 	devs[ndevs++] = dev;
 	hv_stage2_hole(PAGE_DOWN(dev->base), PAGE_UP(dev->base + dev->size));
+	if (dev->phys_irq)
+		arch_irq_own(dev->phys_irq);
 	return 0;
 }
 

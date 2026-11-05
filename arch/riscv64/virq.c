@@ -74,8 +74,7 @@ void riscv64_virq_init(void)
 		csr_write(CSR_STIMECMP, ~0UL);
 	csr_write(hvip, 0);
 	csr_write(hideleg, VS_IRQS);
-	csr_set(sie, (1UL << IRQ_S_TIMER) | (1UL << IRQ_S_SOFT));
-	riscv64_external_sync();
+	csr_set(sie, (1UL << IRQ_S_TIMER) | (1UL << IRQ_S_SOFT) | (1UL << IRQ_S_EXT));
 }
 
 /*
