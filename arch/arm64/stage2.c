@@ -1,4 +1,6 @@
+#include <arch/platform.h>
 #include <arch/stage2.h>
+#include <arch/vgic.h>
 #include <hv/guest.h>
 #include <hv/hv.h>
 #include <hv/stage2.h>
@@ -67,6 +69,10 @@ int arch_stage2_window(struct hv_guest *guest)
 	guest->stage2 = (hv_addr_t)root2 | (uint64_t)guest->id << VTTBR_VMID_SHIFT;
 	hv_stage2_window_add(guest->ram_base, guest->ram_size,
 			     guest->ram_base + guest->pa_offset);
+	/* GICv2: its CPU interface, the virtual one, as guest 0's */
+	if (!arm64_vgic_gic3())
+		hv_stage2_window_add(PLATFORM_GICC, PLATFORM_GICC_SIZE,
+				     PLATFORM_GICV);
 	return hv_stage2_build_windows(root2, ROOT_ENTRIES);
 }
 

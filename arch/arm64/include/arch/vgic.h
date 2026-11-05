@@ -22,10 +22,23 @@ struct arm64_vgic {
 
 void arm64_vgic_setup(void);
 int arm64_vgic_enabled(void);
+int arm64_vgic_gic3(void);
 void arm64_vgic_cpu_init(void);
 void arm64_vgic_save(struct arm64_vgic *vgic);
 void arm64_vgic_load(struct arm64_vgic *vgic);
 int arm64_vgic_sysreg(struct hv_trap_frame *frame);
 void arm64_handle_irq(struct hv_trap_frame *frame);
+void arm64_vgic_sgi_v2(uint32_t sgir);
+void arm64_vgic_changed(int guest);
+
+/* each guest's distributor (vgicd.c) */
+void arm64_vgicd_setup(int gic3);
+void arm64_vgicd_sgi(int guest, int target, unsigned int intid, unsigned int src);
+int arm64_vgicd_sgi_take(int guest, int cpu, unsigned int *intid, unsigned int *src);
+int arm64_vgicd_sgi_waiting(int guest, int cpu);
+int arm64_vgicd_enabled(int guest, int cpu, unsigned int intid);
+unsigned int arm64_vgicd_prio(int guest, int cpu, unsigned int intid);
+int arm64_vgicd_route(int guest, unsigned int intid);
+uint32_t arm64_vgic_ppi_wanted(int guest, int cpu);
 
 #endif

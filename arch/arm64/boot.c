@@ -93,6 +93,8 @@ void arm64_boot(unsigned long dtb)
 		dtb = PLATFORM_RAM_BASE;
 	dtb = hv_main(dtb);
 	loaded = hv_load_guest(dtb, &entry);
+	if (loaded >= 0)
+		arm64_vgic_setup();
 	if (loaded == 1)
 		dtb = hv_guest2_prepare(dtb);
 
@@ -100,8 +102,6 @@ void arm64_boot(unsigned long dtb)
 	if (loaded == 1)
 		hv_stage2_hole((hv_addr_t)__image_start,
 			       ((hv_addr_t)__image_end + 0xfff) & ~0xfffUL);
-	if (loaded >= 0)
-		arm64_vgic_setup();
 	/* the console UART is h2's now; the guest gets a virtual one */
 	if (loaded >= 0)
 		hv_vuart_pl011_init(PLATFORM_UART0, PLATFORM_UART0_SIZE,

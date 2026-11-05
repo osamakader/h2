@@ -31,7 +31,7 @@
  */
 
 #define MAINT_INTID		25	/* PPI 9, on both platforms */
-#define KICK_INTID		15	/* an SGI h2 keeps for itself */
+#define KICK_INTID		15	/* h2's real SGI; guests' are virtual */
 #define TICK_INTID		26	/* PPI 10: CNTHP, h2's own timer */
 #define SPURIOUS(id)		((id) >= 1020 && (id) < 1024)
 #define LPI_FIRST		8192
@@ -83,6 +83,10 @@
 #define GICR_SGI_BASE		0x10000
 #define GICx_IGROUPR0		0x080	/* in SGI_base, or GICD (banked) */
 #define GICx_ISENABLER0		0x100
+#define GICx_ICENABLER0		0x180
+#define GICx_IPRIORITYR0	0x400
+#define GICR_WAKER		0x14
+#define H2_PPIS			(1U << MAINT_INTID | 1U << TICK_INTID)
 #define GICx_ISACTIVER0		0x300
 
 /* GICv2: memory mapped */
@@ -229,12 +233,6 @@ static uint64_t ack(void)
 	return gic3 ? SYSREG_READ(ICC_IAR1_EL1) : *mmio(PLATFORM_GICC + GICC_IAR);
 }
 
-static uint64_t running_priority(void)
-{
-	return (gic3 ? SYSREG_READ(ICC_RPR_EL1) :
-		       *mmio(PLATFORM_GICC + GICC_RPR)) & 0xff;
-}
-
 static void priority_drop(uint64_t iar)
 {
 	if (gic3)
@@ -293,11 +291,7 @@ static int place(uint64_t lr)
  * the guest ends them (EOI), when h2 looks at the line again.
  */
 #define VLINES			4
-#define GICD_IPRIORITYR		0x400
-#define GICD_ITARGETSR		0x800	/* GICv2: a CPU mask per SPI */
 #define GICD_SGIR		0xf00
-#define GICD_IROUTER		0x6000	/* GICv3: an affinity per SPI */
-#define GICD_IROUTER_ANY	(1UL << 31)
 
 static struct {
 	unsigned int intid;
@@ -306,38 +300,7 @@ static struct {
 } vlines[VLINES];
 static int nvlines;
 
-/* the slot of the CPU the guest routes SPI intid to; -1: any, or not known */
-static int route(unsigned int intid)
-{
-	hv_addr_t want;
-	uint8_t mask;
-	int slot, k;
-
-	if (intid < 32 || intid >= 1020)
-		return -1;
-	if (gic3) {
-		want = *(volatile uint64_t *)((hv_addr_t)PLATFORM_GICD +
-					      GICD_IROUTER + 8 * intid);
-		if (want & GICD_IROUTER_ANY)
-			return -1;
-		want &= 0xff00ffffffUL;		/* as MPIDR has them */
-	} else {
-		mask = *(volatile uint8_t *)((hv_addr_t)PLATFORM_GICD +
-					     GICD_ITARGETSR + intid);
-		for (k = 0; k < 8 && !(mask >> k & 1); k++)
-			;
-		if (k == 8)
-			return -1;
-		want = (hv_addr_t)k;		/* CPU interface k: Aff0 k */
-	}
-	for (slot = 0; slot < HV_MAX_CPUS; slot++)
-		if (hv_cpus[slot].used &&
-		    (gic3 ? hv_cpus[slot].hwid : hv_cpus[slot].hwid & 0xff) == want)
-			return slot;
-	return -1;
-}
-
-/* have another CPU look at the lines (h2's own SGI) */
+/* have another CPU look at the lines and SGIs (h2's own SGI) */
 static void kick(int slot)
 {
 	hv_addr_t aff = hv_cpus[slot].hwid;
@@ -402,17 +365,15 @@ static void vline_resample(struct arm64_vgic *vgic)
 		return;
 	for (i = 0; i < nvlines; i++) {
 		intid = vlines[i].intid;
-		if (!vlines[i].level ||
+		if (!vlines[i].level || !arm64_vgicd_enabled(0, here, intid) ||
 		    (vlines[i].cpu >= 0 && vlines[i].cpu != here)) {
 			vline_retract(vgic, intid);
 			continue;
 		}
 		if (vline_present(vgic, intid) || vgic->queued == ARM64_VGIC_QUEUE)
 			continue;
-		/* the priority the guest gave it in the distributor */
 		vgic->queue[vgic->queued++] = intid | LR_PENDING | LR_EOI |
-			(uint64_t)*(volatile uint8_t *)((hv_addr_t)PLATFORM_GICD +
-				GICD_IPRIORITYR + intid) << LR_PRIO_SHIFT |
+			(uint64_t)arm64_vgicd_prio(0, here, intid) << LR_PRIO_SHIFT |
 			(gic3 ? LR_GROUP1 : 0);
 	}
 }
@@ -421,10 +382,45 @@ static void vline_resample(struct arm64_vgic *vgic)
  * The queue, into the list registers, as far as it goes: if they run
  * out, h2 wants the underflow maintenance interrupt.
  */
+/* the PPIs on for real are the ones the running vCPU's guest wants */
+static uint32_t ppis_on[HV_MAX_CPUS];
+
+static void ppi_sync(void)
+{
+	struct hv_vcpu *vcpu = hv_vcpu_current();
+	int me = hv_cpu_index();
+	uint32_t want = arm64_vgic_ppi_wanted(vcpu->guest->id, me) & ~H2_PPIS;
+
+	if (want == ppis_on[me])
+		return;
+	*mmio(ppi_regs[me] + GICx_ICENABLER0) = ~want & 0xffff0000U & ~H2_PPIS;
+	*mmio(ppi_regs[me] + GICx_ISENABLER0) = want;
+	ppis_on[me] = want;
+}
+
+/* the running vCPU's guest's SGIs, from its mailbox into its queue */
+static void sgi_drain(struct hv_vcpu *vcpu)
+{
+	struct arm64_vgic *vgic = &vcpu->arch.vgic;
+	int g = vcpu->guest->id, me = hv_cpu_index();
+	unsigned int intid, src;
+
+	while (vgic->queued < ARM64_VGIC_QUEUE &&
+	       arm64_vgicd_sgi_take(g, me, &intid, &src)) {
+		vgic->queue[vgic->queued++] = intid | LR_PENDING |
+			(uint64_t)arm64_vgicd_prio(g, me, intid) << LR_PRIO_SHIFT |
+			(gic3 ? LR_GROUP1 :
+			 (uint64_t)src << LR_PINTID_SHIFT);
+	}
+}
+
 static void refill(struct arm64_vgic *vgic)
 {
 	int i, n = 0, full = 0, r;
 	uint64_t lr;
+
+	ppi_sync();
+	sgi_drain(hv_vcpu_current());
 
 	/* done with: the ones that asked for maintenance need clearing */
 	for (i = 0; i < nr_lrs; i++) {
@@ -490,7 +486,7 @@ void hv_virq_line(unsigned int irq, int level)
 		vlines[i].level = level;
 		return;
 	}
-	cpu = route(irq);
+	cpu = arm64_vgicd_route(0, irq);
 	if (vlines[i].level == level && vlines[i].cpu == cpu)
 		return;
 	vlines[i].cpu = cpu;
@@ -510,22 +506,81 @@ void hv_virq_line(unsigned int irq, int level)
 	}
 }
 
+/*
+ * A guest changed its distributor: lines may need another look here and
+ * on the CPUs routed to, and PPIs and SGIs on the CPUs it runs on.
+ */
+void arm64_vgic_changed(int g)
+{
+	struct hv_vcpu *vcpu = hv_vcpu_current();
+	int i, slot, me = hv_cpu_index();
+
+	if (g == 0)
+		for (i = 0; i < nvlines; i++)
+			vlines[i].cpu = arm64_vgicd_route(0, vlines[i].intid);
+	hv_mb();
+	if (vcpu->guest->id == g)
+		refill(&vcpu->arch.vgic);
+	for (slot = 0; slot < HV_MAX_CPUS; slot++)
+		if (slot != me && hv_cpus[slot].used)
+			kick(slot);
+}
+
+/* an SGI for guest g's vCPU on target */
+static void sgi_send(int g, int target, unsigned int intid, unsigned int src)
+{
+	struct hv_vcpu *vcpu = hv_vcpu_current();
+
+	arm64_vgicd_sgi(g, target, intid, src);
+	if (target != hv_cpu_index())
+		kick(target);
+	else if (vcpu->guest->id == g)
+		refill(&vcpu->arch.vgic);
+}
+
+/* GICv2's GICD_SGIR, written by the running guest */
+void arm64_vgic_sgi_v2(uint32_t sgir)
+{
+	int g = hv_vcpu_current()->guest->id, me = hv_cpu_index(), slot;
+	unsigned int filter = sgir >> 24 & 3, list = sgir >> 16 & 0xff;
+
+	for (slot = 0; slot < HV_MAX_CPUS; slot++) {
+		if (!hv_cpus[slot].used)
+			continue;
+		if (filter == 0 ? list >> (hv_cpus[slot].hwid & 7) & 1 :
+		    filter == 1 ? slot != me : slot == me)
+			sgi_send(g, slot, sgir & 0xf,
+				 (unsigned int)(hv_cpus[me].hwid & 7));
+	}
+}
+
 /* a physical IRQ, taken from the guest: on to the running vCPU */
+static uint64_t lr_for(const struct hv_vcpu *vcpu, uint64_t intid)
+{
+	return intid | LR_PENDING | (gic3 ? LR_GROUP1 : 0) |
+	       (uint64_t)arm64_vgicd_prio(vcpu->guest->id, vcpu->cpu,
+					  (unsigned int)intid) << LR_PRIO_SHIFT;
+}
+
 void arm64_handle_irq(struct hv_trap_frame *frame)
 {
 	struct hv_vcpu *vcpu = hv_vcpu_current(), *owner;
 	struct arm64_vgic *vgic = &vcpu->arch.vgic;
-	uint64_t iar = ack(), intid, lr;
+	uint64_t iar = ack(), intid;
+	int g, me = hv_cpu_index();
 
 	intid = gic3 ? iar & 0xffffff : iar & 0x3ff;
 	if (!SPURIOUS(intid)) {
-		lr = intid | running_priority() << LR_PRIO_SHIFT | LR_PENDING |
-		     (gic3 ? LR_GROUP1 : 0);
 		priority_drop(iar);
 
 		if (intid == MAINT_INTID || intid == KICK_INTID) {
 			deactivate(iar);
 			refill(vgic);
+			/* an SGI for a guest that isn't running here */
+			for (g = 0; intid == KICK_INTID && g < HV_MAX_GUESTS; g++)
+				if (g != vcpu->guest->id &&
+				    arm64_vgicd_sgi_waiting(g, me))
+					hv_vcpu_yield();
 		} else if (intid == TICK_INTID) {
 			/* the next one first: that takes the line down */
 			arch_tick_start();
@@ -535,21 +590,18 @@ void arm64_handle_irq(struct hv_trap_frame *frame)
 			/* an emulated device's real one: h2's */
 			deactivate(iar);
 		} else if (intid < 16 || intid >= LPI_FIRST) {
-			/* edge: h2's part is done; GICv2 says who sent it */
+			/* no others of these are made: guests' SGIs are virtual */
 			deactivate(iar);
-			if (!gic3)
-				lr |= (iar >> 10 & 7) << LR_PINTID_SHIFT;
-			owner = hv_vcpu_owner();
-			if (owner)
-				inject(owner, lr);
 		} else if (intid < 32) {
 			/* the CPU's own: the running vCPU's timers */
-			inject(vcpu, lr | LR_HW | intid << LR_PINTID_SHIFT);
+			inject(vcpu, lr_for(vcpu, intid) | LR_HW |
+				     intid << LR_PINTID_SHIFT);
 		} else {
 			/* a device's: guest 0's, if it has a vCPU here at all */
 			owner = hv_vcpu_owner();
 			if (owner)
-				inject(owner, lr | LR_HW | intid << LR_PINTID_SHIFT);
+				inject(owner, lr_for(owner, intid) | LR_HW |
+					      intid << LR_PINTID_SHIFT);
 			else
 				deactivate(iar);
 		}
@@ -560,21 +612,18 @@ void arm64_handle_irq(struct hv_trap_frame *frame)
 
 /*
  * The guest makes an SGI (GICv3: ICC_SGI*R_EL1 trap to EL2 while IMO is
- * set). Its vCPUs have their CPUs' affinities: make it as it is.
+ * set): virtual, to its vCPUs on the CPUs it names.
  */
 int arm64_vgic_sysreg(struct hv_trap_frame *frame)
 {
 	unsigned long iss = frame->cause & 0x1ffffff, rt = ISS_RT(iss);
 	uint64_t v = rt == 31 ? 0 : frame->regs[rt];
+	int g = hv_vcpu_current()->guest->id, me = hv_cpu_index(), slot;
+	unsigned int list = v & 0xffff, intid = v >> 24 & 0xf, rs = v >> 44 & 0xf;
+	hv_addr_t hw;
 
 	if (!gic3 || (iss & ISS_READ))
 		return 0;
-
-	/* no SGIs from guests without devices: they have nobody to tell */
-	if (hv_vcpu_current()->guest->id) {
-		frame->pc += 4;
-		return 1;
-	}
 
 	switch (iss & ISS_SYSREG_MASK) {
 	case ISS_SYSREG(3, 0, 12, 11, 5):
@@ -585,19 +634,22 @@ int arm64_vgic_sysreg(struct hv_trap_frame *frame)
 		return 0;
 	}
 
-	/* SGI 15 is h2's: the guest's goes nowhere */
-	switch ((v >> 24 & 0xf) == KICK_INTID ? 0 : iss & ISS_SYSREG_MASK) {
-	case ISS_SYSREG(3, 0, 12, 11, 5):
-		SYSREG_WRITE(ICC_SGI1R_EL1, v);
-		break;
-	case ISS_SYSREG(3, 0, 12, 11, 6):
-		SYSREG_WRITE(ICC_ASGI1R_EL1, v);
-		break;
-	case ISS_SYSREG(3, 0, 12, 11, 7):
-		SYSREG_WRITE(ICC_SGI0R_EL1, v);
-		break;
+	for (slot = 0; slot < HV_MAX_CPUS; slot++) {
+		if (!hv_cpus[slot].used)
+			continue;
+		hw = hv_cpus[slot].hwid;
+		if (v >> 40 & 1) {			/* IRM: all but itself */
+			if (slot == me)
+				continue;
+		} else if ((hw >> 32 & 0xff) != (v >> 48 & 0xff) ||
+			   (hw >> 16 & 0xff) != (v >> 32 & 0xff) ||
+			   (hw >> 8 & 0xff) != (v >> 16 & 0xff) ||
+			   (hw >> 4 & 0xf) != rs ||
+			   !(list >> (hw & 0xf) & 1)) {
+			continue;
+		}
+		sgi_send(g, slot, intid, 0);
 	}
-	__asm__ volatile("isb" ::: "memory");
 	frame->pc += 4;
 	return 1;
 }
@@ -719,6 +771,7 @@ void arm64_vgic_setup(void)
 	if (nr_aprs > 4)
 		nr_aprs = 4;
 	enabled = 1;
+	arm64_vgicd_setup(gic3);
 
 	hv_console_write(gic3 ? "h2: vgic: GICv3, list registers: " :
 				"h2: vgic: GICv2, list registers: ");
@@ -750,19 +803,32 @@ void arm64_vgic_cpu_init(void)
 			return;
 		}
 		ppi_regs[hv_cpu_index()] = rd + GICR_SGI_BASE;
-		*mmio(rd + GICR_SGI_BASE + GICx_IGROUPR0) |=
-			1U << MAINT_INTID | 1U << KICK_INTID | 1U << TICK_INTID;
+		*mmio(rd + GICR_SGI_BASE + GICx_IGROUPR0) = ~0U;
+		*mmio(rd + GICR_WAKER) &= ~2U;
+		while (*mmio(rd + GICR_WAKER) & 4)
+			;
 	} else {
 		*mmio(PLATFORM_GICC + GICC_PMR) = 0xff;
 		*mmio(PLATFORM_GICC + GICC_CTLR) = GICC_CTLR_ENABLE | GICC_CTLR_EOIMODE;
 		ppi_regs[hv_cpu_index()] = PLATFORM_GICD;
 	}
+	/* nothing of the guests' yet; priorities mean nothing for real */
+	for (i = 0; i < 8; i++)
+		*mmio(ppi_regs[hv_cpu_index()] + GICx_IPRIORITYR0 + 4 * i) = 0x80808080;
+	*mmio(ppi_regs[hv_cpu_index()] + GICx_ICENABLER0) =
+		~(H2_PPIS | 1U << KICK_INTID);
 	*mmio(ppi_regs[hv_cpu_index()] + GICx_ISENABLER0) =
-		1U << MAINT_INTID | 1U << KICK_INTID | 1U << TICK_INTID;
+		H2_PPIS | 1U << KICK_INTID;
+	ppis_on[hv_cpu_index()] = 0;
 	for (i = 0; i < nr_lrs; i++)
 		lr_put(i, 0);
 	hcr_put(0);
 	__asm__ volatile("isb" ::: "memory");
+}
+
+int arm64_vgic_gic3(void)
+{
+	return gic3;
 }
 
 /* whether physical IRQs come to h2 */
