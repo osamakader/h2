@@ -1,4 +1,5 @@
 #include <arch/boot.h>
+#include <arch/csr.h>
 #include <arch/sbi.h>
 #include <arch/virq.h>
 #include <arch/trap.h>
@@ -154,6 +155,7 @@ static int sbi_unsupported(hv_addr_t ext, hv_addr_t fid)
 static void sbi_guest(hv_addr_t *a, hv_addr_t ext, hv_addr_t fid)
 {
 	struct sbiret fw;
+	hv_addr_t h;
 
 	if ((ext == SBI_EXT_TIME && fid == SBI_TIME_SET_TIMER) ||
 	    ext == SBI_EXT_LEGACY_SET_TIMER) {
@@ -166,6 +168,13 @@ static void sbi_guest(hv_addr_t *a, hv_addr_t ext, hv_addr_t fid)
 	} else if (ext == SBI_EXT_RFNC && fid < SBI_RFNC_HFENCE_FIRST) {
 		/* it has one hart */
 		__asm__ volatile("hfence.vvma zero, zero" ::: "memory");
+		a[0] = 0;
+	} else if (ext == SBI_EXT_IPI && fid == SBI_IPI_SEND_IPI) {
+		/* its one hart, if named */
+		h = hv_cpus[hv_cpu_index()].hwid;
+		if (a[1] == ~0UL ||
+		    (h >= a[1] && h - a[1] < 64 && (a[0] >> (h - a[1]) & 1)))
+			csr_set(hvip, 1UL << IRQ_VS_SOFT);
 		a[0] = 0;
 	} else if (ext == SBI_EXT_SRST || ext == SBI_EXT_LEGACY_SHUTDOWN) {
 		hv_console_write("h2: a guest stopped\n");
