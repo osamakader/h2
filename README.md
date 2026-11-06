@@ -1,5 +1,5 @@
 # h2
-Minimal phase-1 hypervisor for `arm64` and `riscv64`.
+Minimal hypervisor for `arm64` and `riscv64`.
 
 ## Build
 
@@ -22,13 +22,18 @@ make ARCH=arm64 run          # h2 and its built-in test guest
 make ARCH=riscv64 run
 ```
 
-Expected output (arm64; riscv64 says "VS via ECALL"):
+Expected output on arm64:
 
 ```text
 h2: hypervisor online
-h2: device tree at 0x0000000040000000, h2 reserved 0x0000000040100000-...
+h2: device tree at 0x0000000040000000
+h2: reserved 0x0000000040100000-... in it
+h2: vgic: GICv3, list registers: 0x0000000000000004
 guest: hello from EL1 via HVC
 ```
+
+On riscv64 the addresses differ, `h2: guest timer: Sstc (vstimecmp)` takes
+the place of the vgic line, and the guest says "VS via ECALL".
 
 `CPUS` (default 3), `MEM` (128M) and `QEMU_ARGS` adjust the machine. On
 arm64 qemu starts h2 in EL2 (`virtualization=on`); on riscv64 OpenSBI
